@@ -15,20 +15,229 @@
     "contact_label": "扫码关注 · 获取更多资讯"
   },
   "recruitment": "长期诚聘独立律师、派驻律师、专利代理师，同步开放分所加盟",
-  "deepseek_api_key": "YOUR_DEEPSEEK_API_KEY",
   "mao_quotes": [
     "实事求是",
-    "没有调查，就没有发言权"
+    "没有调查，就没有发言权",
+    "世上无难事，只要肯登攀",
+    "虚心使人进步，骄傲使人落后",
+    "为人民服务",
+    "团结就是力量",
+    "下定决心，不怕牺牲，排除万难，去争取胜利",
+    "星星之火，可以燎原",
+    "一万年太久，只争朝夕",
+    "雄关漫道真如铁，而今迈步从头越",
+    "不管风吹浪打，胜似闲庭信步",
+    "好好学习，天天向上",
+    "人是要有一点精神的",
+    "战略上藐视敌人，战术上重视敌人",
+    "多少事，从来急；天地转，光阴迫。一万年太久，只争朝夕。",
+    "世界是你们的，也是我们的，但是归根结底是你们的",
+    "数风流人物，还看今朝",
+    "牢骚太盛防肠断，风物长宜放眼量",
+    "东方欲晓，莫道君行早。踏遍青山人未老，风景这边独好",
+    "自己动手，丰衣足食"
   ],
-  "rss_sources": {
-    "domestic": [
-      {"name": "社会", "url": "https://www.chinanews.com.cn/rss/society.xml"},
-      {"name": "财经", "url": "https://www.chinanews.com.cn/rss/finance.xml"},
-      {"name": "法治", "url": "https://www.chinanews.com.cn/rss/fz.xml"},
-      {"name": "生活", "url": "https://www.chinanews.com.cn/rss/life.xml"}
-    ],
-    "international": [
-      {"name": "国际", "url": "https://www.chinanews.com.cn/rss/world.xml"}
-    ]
-  }
+  "quote_source": "毛主席语录",
+  "disclaimer": "以上信息来源于中新网等官方渠道，仅供交流参考，请以权威机构发布为准。",
+  "deepseek_api_key": "YOUR_DEEPSEEK_API_KEY",
+  "sources": [
+    {
+      "name": "中新网",
+      "scope": "domestic",
+      "category": "社会",
+      "url": "https://www.chinanews.com.cn/rss/society.xml",
+      "limit": 8
+    },
+    {
+      "name": "中新网",
+      "scope": "domestic",
+      "category": "财经",
+      "url": "https://www.chinanews.com.cn/rss/finance.xml",
+      "limit": 8
+    },
+    {
+      "name": "中新网",
+      "scope": "domestic",
+      "category": "法治",
+      "url": "https://www.chinanews.com.cn/rss/fz.xml",
+      "limit": 8
+    },
+    {
+      "name": "中新网",
+      "scope": "domestic",
+      "category": "生活",
+      "url": "https://www.chinanews.com.cn/rss/life.xml",
+      "limit": 8
+    },
+    {
+      "name": "中新网",
+      "scope": "international",
+      "category": "国际",
+      "url": "https://www.chinanews.com.cn/rss/world.xml",
+      "limit": 10
+    }
+  ],
+  "fallback_articles": [
+    {
+      "scope": "domestic",
+      "category": "消费维权",
+      "source": "中新网",
+      "title": "消费者权益典型案例发布 霸王条款被集中曝光",
+      "summary": "多地市场监管部门发布消费维权典型案例，健身房退卡、预付式消费跑路、大数据杀熟等成投诉重灾区，监管部门加大整治力度。"
+    },
+    {
+      "scope": "domestic",
+      "category": "消费维权",
+      "source": "中新网",
+      "title": "直播带货投诉量激增 虚假宣传成维权难点",
+      "summary": "直播间价格欺诈、虚假功效宣传等问题频发，消费者维权面临取证难、主体认定难等障碍，多地完善专门管理办法强化监管。"
+    },
+    {
+      "scope": "domestic",
+      "category": "劳动权益",
+      "source": "中新网",
+      "title": "新就业形态劳动争议增多 多地探索保障机制",
+      "summary": "外卖骑手、网约车司机等灵活就业群体劳动纠纷呈上升趋势，多地通过立法和司法裁判探索解决劳动关系认定与社保缴纳难题。"
+    },
+    {
+      "scope": "domestic",
+      "category": "劳动权益",
+      "source": "中新网",
+      "title": "超时加班持续整治 企业违法用工面临严查",
+      "summary": "互联网、物流等行业超时加班问题持续受到监管关注，企业违法安排加班将面临行政处罚和劳动仲裁双重法律风险，合规用工体系亟需建立。"
+    },
+    {
+      "scope": "domestic",
+      "category": "食品安全",
+      "source": "中新网",
+      "title": "校园食品安全检查常态化 多所学校食堂被整改",
+      "summary": "市场监管总局通报校园食品安全抽查结果，部分学校食堂存在原料采购不规范、餐具消毒不达标等问题，已责令限期整改并加强日常监督。"
+    },
+    {
+      "scope": "domestic",
+      "category": "食品安全",
+      "source": "中新网",
+      "title": "预制菜质量安全引关注 行业标准加快制定",
+      "summary": "随着预制菜市场规模扩大，消费者对添加剂使用、生产卫生条件等安全问题关注度上升，相关部门加快制定行业国家标准。"
+    },
+    {
+      "scope": "domestic",
+      "category": "法律",
+      "source": "中新网",
+      "title": "数据安全执法力度加大 多企业因违规被罚",
+      "summary": "网信办通报数据安全执法典型案例，多家企业因违规收集使用个人信息被处以高额罚款，企业数据合规已从建议升级为硬约束。"
+    },
+    {
+      "scope": "domestic",
+      "category": "法律",
+      "source": "中新网",
+      "title": "民法典婚姻家庭编司法解释要点解读",
+      "summary": "最高法婚姻家庭编司法解释对夫妻共同债务认定、离婚冷静期适用、家务劳动补偿等社会关切问题作出细化规定，为家事纠纷裁判提供统一尺度。"
+    },
+    {
+      "scope": "domestic",
+      "category": "法律",
+      "source": "中新网",
+      "title": "反垄断执法力度不减 平台经济合规成常态",
+      "summary": "市场监管总局持续对平台企业滥用市场支配地位等行为展开调查，数字经济领域反垄断合规已逐渐成为企业经营的基本要求。"
+    },
+    {
+      "scope": "domestic",
+      "category": "反腐",
+      "source": "中新网",
+      "title": "纪委监委通报多起违规收受礼品礼金典型案件",
+      "summary": "中央纪委国家监委通报节日期间违规收受礼品礼金典型问题，涉及多地领导干部，释放持续整治四风的强烈信号。"
+    },
+    {
+      "scope": "domestic",
+      "category": "社会热点",
+      "source": "中新网",
+      "title": "多地二手房交易纠纷增多 合同风险需警惕",
+      "summary": "随着房地产市场变化，房屋买卖合同纠纷案件数量上升，定金退还、一房二卖、学区房承诺落空等成诉讼高发领域。"
+    },
+    {
+      "scope": "domestic",
+      "category": "社会热点",
+      "source": "中新网",
+      "title": "城市养犬管理规定趋严 多地开展专项整治",
+      "summary": "犬只伤人事件引发社会关注后，多地加强城市养犬管理，推行犬只登记、遛狗拴绳等强制规定，违规者面临罚款等处罚。"
+    },
+    {
+      "scope": "domestic",
+      "category": "民生",
+      "source": "中新网",
+      "title": "个税专项附加扣除填报指南 这些细节别忽略",
+      "summary": "子女教育、住房贷款利息、大病医疗等个税专项附加扣除项目涉及多项填报细则，税务部门提醒纳税人注意常见误区，避免多缴或漏报。"
+    },
+    {
+      "scope": "domestic",
+      "category": "民生",
+      "source": "中新网",
+      "title": "多地推进老旧小区改造 加装电梯纠纷如何化解",
+      "summary": "老旧小区改造中加装电梯引发的邻里纠纷频发，法院通过调解和裁判妥善处理低层住户反对、费用分摊等难题，平衡各方权益。"
+    },
+    {
+      "scope": "domestic",
+      "category": "民生",
+      "source": "中新网",
+      "title": "电信网络诈骗手法翻新 反诈中心发布防骗指南",
+      "summary": "冒充客服、虚假投资理财、AI换脸等新型诈骗手法层出不穷，反诈中心提醒公众不轻信陌生来电、不点击不明链接，遭遇诈骗及时报警。"
+    },
+    {
+      "scope": "international",
+      "category": "国际",
+      "source": "中新网",
+      "title": "中东局势持续紧张 多国外交斡旋加速推进",
+      "summary": "中东地区冲突呈现扩大化趋势，联合国及多国加紧外交斡旋致力于推动停火，国际社会对局势升级可能带来的连锁反应表示担忧。"
+    },
+    {
+      "scope": "international",
+      "category": "国际",
+      "source": "中新网",
+      "title": "全球通胀数据分化 主要央行政策路径存变数",
+      "summary": "欧美通胀数据好于预期但服务通胀仍然顽固，主要央行在是否降息、何时降息间摇摆不定，全球经济政策走向面临较大不确定性。"
+    },
+    {
+      "scope": "international",
+      "category": "国际",
+      "source": "中新网",
+      "title": "多国大选年政治格局重塑 经济政策走向引关注",
+      "summary": "全球多国即将或正在进行大选，选举结果可能影响贸易、气候、移民等关键政策方向，外部环境变化令企业风险管控压力增大。"
+    },
+    {
+      "scope": "international",
+      "category": "国际",
+      "source": "中新网",
+      "title": "气候变化引发极端天气频发 防灾减灾成全球议题",
+      "summary": "高温、暴雨、干旱等极端天气在全球多地造成人员伤亡和经济损失，增强气候韧性和灾害应对能力成为各国紧迫任务。"
+    },
+    {
+      "scope": "international",
+      "category": "国际",
+      "source": "中新网",
+      "title": "全球供应链重组加速 出海企业机遇与风险并存",
+      "summary": "关税壁垒与地缘政治推动供应链区域化布局，中国出海企业积极拓展东南亚和中东市场，但合规与本地化运营挑战不容忽视。"
+    },
+    {
+      "scope": "international",
+      "category": "国际",
+      "source": "中新网",
+      "title": "国际网络安全形势严峻 关键基础设施成攻击目标",
+      "summary": "针对能源、金融、医疗等关键信息基础设施的网络攻击事件增多，多国加强立法与防御能力建设，跨境网络安全合作诉求上升。"
+    },
+    {
+      "scope": "international",
+      "category": "国际",
+      "source": "中新网",
+      "title": "跨境贸易合规要求升级 企业法务面临新挑战",
+      "summary": "出口管制清单频繁更新、供应链合规审查趋严，涉外企业法务团队需同时应对多国监管要求，合规体系建设成为核心竞争力。"
+    },
+    {
+      "scope": "international",
+      "category": "国际",
+      "source": "中新网",
+      "title": "国际知识产权争端频发 企业海外专利布局加码",
+      "summary": "科技企业跨国专利诉讼案件增多，标准必要专利许可费率争议持续，越来越多的出海企业提前进行海外知识产权战略规划。"
+    }
+  ]
 }
