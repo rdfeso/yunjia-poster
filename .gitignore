@@ -1,0 +1,14 @@
+# 敏感配置（含API密钥）
+config.json
+
+# 输出文件
+output/
+
+# Python 缓存
+__pycache__/
+*.pyc
+*.pyo
+
+# 系统文件
+.DS_Store
+Thumbs.db
