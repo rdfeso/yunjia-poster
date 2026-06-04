@@ -380,6 +380,7 @@ def build_html(config: dict, articles: list[dict], poster_date: dt.date) -> str:
         "{{BRAND_NAME}}": html.escape(config["brand"]["name"]),
         "{{BRAND_SUBTITLE}}": html.escape(config["brand"]["subtitle"]),
         "{{SOLAR_DATE}}": poster_date.strftime("%Y年%m月%d日"),
+        "{{WEEKDAY}}": ["星期一", "星期二", "星期三", "星期四", "星期五", "星期六", "星期日"][poster_date.weekday()],
         "{{DATE_ISO}}": poster_date.isoformat(),
         "{{ISSUE}}": poster_date.strftime("%Y%m%d"),
         "{{DOMESTIC_ARTICLES}}": article_html(domestic),
