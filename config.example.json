@@ -46,35 +46,56 @@
       "scope": "domestic",
       "category": "社会",
       "url": "https://www.chinanews.com.cn/rss/society.xml",
-      "limit": 8
+      "limit": 6
     },
     {
       "name": "中新网",
       "scope": "domestic",
       "category": "财经",
       "url": "https://www.chinanews.com.cn/rss/finance.xml",
-      "limit": 8
+      "limit": 6
     },
     {
       "name": "中新网",
       "scope": "domestic",
       "category": "法治",
       "url": "https://www.chinanews.com.cn/rss/fz.xml",
-      "limit": 8
+      "limit": 6
     },
     {
       "name": "中新网",
       "scope": "domestic",
       "category": "生活",
       "url": "https://www.chinanews.com.cn/rss/life.xml",
-      "limit": 8
+      "limit": 6
+    },
+    {
+      "name": "中新网",
+      "scope": "domestic",
+      "category": "科技",
+      "url": "https://www.chinanews.com.cn/rss/it.xml",
+      "limit": 6
+    },
+    {
+      "name": "中新网",
+      "scope": "domestic",
+      "category": "健康",
+      "url": "https://www.chinanews.com.cn/rss/health.xml",
+      "limit": 6
+    },
+    {
+      "name": "中新网",
+      "scope": "domestic",
+      "category": "教育",
+      "url": "https://www.chinanews.com.cn/rss/edu.xml",
+      "limit": 6
     },
     {
       "name": "中新网",
       "scope": "international",
       "category": "国际",
       "url": "https://www.chinanews.com.cn/rss/world.xml",
-      "limit": 10
+      "limit": 8
     }
   ],
   "fallback_articles": [
