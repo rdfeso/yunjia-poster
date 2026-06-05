@@ -59,19 +59,29 @@ def strip_tags(value: str) -> str:
 
 
 def truncate(value: str, limit: int, smart: bool = True) -> str:
-    """截断字符串到指定长度。smart=True 时优先在完整句子边界处截断，避免\"…\"尾巴。"""
+    """截断字符串到指定长度。smart=True 时优先在完整句子边界处截断，避免"…"尾巴。"""
     if len(value) <= limit:
         return value
     if smart:
         # 第一轮：回溯到强断句标点（。！？；）
-        for i in range(limit, max(limit - 20, 0), -1):
+        for i in range(limit, max(limit - 25, 0), -1):
             if value[i - 1] in "。！？；?!":
                 return value[:i]
         # 第二轮：回溯到弱断句标点（，）
-        for i in range(limit, max(limit - 20, 0), -1):
+        for i in range(limit, max(limit - 25, 0), -1):
             if value[i - 1] == "，":
                 return value[: i - 1] + "。"
-    return value[: limit - 1].rstrip() + "…"
+        # 第三轮：前瞻找句号（允许略微超过 limit，最多多 10 字）
+        for i in range(limit, min(limit + 10, len(value))):
+            if value[i] in "。！？；?!":
+                return value[: i + 1]
+        # 第四轮：前瞻找逗号
+        for i in range(limit, min(limit + 10, len(value))):
+            if value[i] == "，":
+                return value[:i] + "。"
+        # 最后兜底：硬截断 + 句号，绝不用省略号
+        return value[: limit - 1].rstrip("，、。！？；?!") + "。"
+    return value[: limit - 1].rstrip("，、。！？；?!") + "。"
 
 
 def text(node: ET.Element, names: tuple[str, ...]) -> str:
@@ -768,14 +778,15 @@ def ai_summarize_batch(articles: list[dict], limit: int = 70, api_key: str = "")
 
     prompt = (
         f"你是一位为律师事务所资讯海报服务的新闻编辑。请为以下 {len(articles)} 条新闻各写一条摘要。\n"
-        f"每条摘要至少50字、目标{limit}字左右。必须有实质信息量：包含事件结果、法律要点、处罚金额、涉及人数等关键细节。\n"
+        f"每条摘要至少50字、严格不超过{limit}字（超出会被截断，导致语句不完整）。必须有实质信息量：包含事件结果、法律要点、处罚金额、涉及人数等关键细节。\n"
         "禁止事项（出现即不合格）：\n"
         "1. 禁止以\"据介绍\"\"相关负责人表示\"\"近年来\"等套话开头\n"
         "2. 禁止整句照搬标题，必须补充标题之外的新信息\n"
         "3. 禁止只说\"持续推进\"\"有序开展\"等无实质内容的空话\n"
         "4. 每条必须包含至少一个具体事实（人名、地名、金额、时间、数据、法律条款）\n"
         "5. 严格按格式输出：序号. 摘要内容\n"
-        "6. 禁止使用省略号（…）截断——每条摘要必须以完整句号结尾\n\n"
+        "6. 禁止使用省略号（…）截断——每条摘要必须以完整句号结尾\n"
+        f"7. 输出前自检：数一下每条摘要的字数，确保不超过{limit}字——宁可短一点，不要超长被切\n\n"
         + "\n\n".join(parts)
     )
 
