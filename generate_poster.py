@@ -28,6 +28,23 @@ def load_json(path: Path) -> dict:
         return json.load(f)
 
 
+def apply_env_overrides(config: dict) -> None:
+    """用环境变量覆盖敏感配置（CI 环境注入 GitHub Secrets）。"""
+    env_map = {
+        "DEEPSEEK_API_KEY": ("deepseek_api_key", None),
+        "FEISHU_APP_ID": ("feishu", "app_id"),
+        "FEISHU_APP_SECRET": ("feishu", "app_secret"),
+        "FEISHU_CHAT_ID": ("feishu", "chat_id"),
+    }
+    for env_key, (config_key, sub_key) in env_map.items():
+        val = os.getenv(env_key, "").strip()
+        if val:
+            if sub_key is None:
+                config[config_key] = val
+            else:
+                config.setdefault(config_key, {})[sub_key] = val
+
+
 def strip_tags(value: str) -> str:
     value = re.sub(r"<[^>]+>", "", value or "")
     value = html.unescape(value)
@@ -46,10 +63,14 @@ def truncate(value: str, limit: int, smart: bool = True) -> str:
     if len(value) <= limit:
         return value
     if smart:
-        # 回溯到最近的自然断句标点（。！？；）
+        # 第一轮：回溯到强断句标点（。！？；）
         for i in range(limit, max(limit - 20, 0), -1):
             if value[i - 1] in "。！？；?!":
                 return value[:i]
+        # 第二轮：回溯到弱断句标点（，）
+        for i in range(limit, max(limit - 20, 0), -1):
+            if value[i - 1] == "，":
+                return value[: i - 1] + "。"
     return value[: limit - 1].rstrip() + "…"
 
 
@@ -179,6 +200,12 @@ _PRIORITY_KEYWORDS = [
     "税", "出口", "进口", "制造", "供应链", "并购", "融资",
     # 热点类
     "调查", "曝光", "查处", "通报", "案件", "判决", "维权", "投诉",
+    # 文化/体育/健康
+    "文化", "文物", "非遗", "体育", "赛事", "奥运", "健康", "医疗",
+    "医保", "医院", "医生", "药品", "疫苗", "养生",
+    # 科技/互联网/环保
+    "AI", "人工智能", "算法", "互联网", "平台", "数据", "芯片", "5G",
+    "环保", "碳中和", "减排", "绿色", "新能源", "电动汽车", "光伏",
 ]
 
 
@@ -193,28 +220,121 @@ def _score_article(title: str, summary: str) -> int:
     if re.match(r"^(新华社|中新网|人民日报|新华网).{0,5}(电|讯|消息)", title):
         score -= 3
     # 政论/评论/随笔/述评类降权（没具体事件，摘要只能是空话）
-    _OPINION_PENALTY = ["随笔", "评论", "述评", "解读", "时评", "综述", "观察"]
+    _OPINION_PENALTY = ["随笔", "评论", "述评", "解读", "时评", "综述", "观察", "社论", "特约", "编者按"]
     for w in _OPINION_PENALTY:
         if w in title:
             score -= 5
             break
-    # 摘要空泛检测：全篇由套话词组成的扣分
-    _FLUFF_WORDS = {"高质量", "深度融", "良性循环", "新格局", "推动", "赋能", "持续优化"}
+    # 摘要空泛检测：套话词越多越空
+    _FLUFF_WORDS = {
+        "高质量", "深度融合", "良性循环", "新发展格局", "推动", "赋能", "持续优化",
+        "扎实推进", "取得显著成效", "圆满完成", "全面提升", "统筹推进",
+        "据介绍", "相关负责人表示", "值得一提的是", "近年来", "持续加强",
+        "不断夯实", "有序有力有效", "坚持以", "深入贯彻落实",
+    }
     fluff_count = sum(1 for w in _FLUFF_WORDS if w in summary)
-    if fluff_count >= 3 and len(summary) < 80:
-        score -= 4
+    if fluff_count >= 2 and len(summary) < 100:
+        score -= fluff_count * 2
+    # 具体度加分：有数字/地名/人名的更有新闻价值
+    if re.search(r"\d{4}年|\d+月|\d+日|\d+%|\d+\.?\d*亿|\d+\.?\d*万", title + summary):
+        score += 3
+    if re.search(r"[省市区县]|北京|上海|广州|深圳|杭州|成都|武汉|南京|重庆|天津", title + summary):
+        score += 2
     return score
 
 
-def select_articles(all_articles: list[dict], scope: str, target: int) -> list[dict]:
-    """从抓到的文章中，按优先级选出 target 条。"""
+def _titles_too_similar(title1: str, title2: str, min_common: int = 10) -> bool:
+    """判断两个标题是否同质：公共前缀 ≥ min_common 字符（中文新闻标题常用写法）。"""
+    if not title1 or not title2:
+        return False
+    min_len = min(len(title1), len(title2))
+    common = 0
+    for i in range(min_len):
+        if title1[i] == title2[i]:
+            common += 1
+        else:
+            break
+    return common >= min_common
+
+
+def _reclassify_domestic_articles(articles: list[dict]) -> None:
+    """将国际频道里实质关于中国的文章改分到国内。"""
+    _patterns = [
+        "在中国加速", "在中国成为", "读懂中国", "中国式",
+        "中国针灸", "中国援", "中国医疗队",
+    ]
+    for a in articles:
+        if a.get("scope") != "international":
+            continue
+        text = a.get("title", "") + a.get("raw_content", "")
+        if any(p in text for p in _patterns):
+            a["scope"] = "domestic"
+            a["category"] = "综合资讯"
+
+
+def _load_previous_articles(output_dir: Path, poster_date: dt.date, days: int = 2) -> list[dict]:
+    """加载前 N 天的已推送文章 + 持久化拒绝列表，用于跨日去重。"""
+    previous = []
+    # 加载前 N 天文章
+    for i in range(1, days + 1):
+        prev_date = poster_date - dt.timedelta(days=i)
+        prev_path = output_dir / f"raw-articles-{prev_date.isoformat()}.json"
+        if prev_path.exists():
+            try:
+                with prev_path.open("r", encoding="utf-8") as f:
+                    prev_articles = json.load(f)
+                previous.extend(prev_articles)
+            except Exception:
+                pass
+    # 加载持久化拒绝列表
+    rejected_path = output_dir / "rejected-articles.json"
+    if rejected_path.exists():
+        try:
+            with rejected_path.open("r", encoding="utf-8") as f:
+                rejected = json.load(f)
+            previous.extend(rejected)
+        except Exception:
+            pass
+    return previous
+
+
+def select_articles(
+    all_articles: list[dict],
+    scope: str,
+    target: int,
+    previous_articles: list[dict] | None = None,
+) -> list[dict]:
+    """选出 target 条，含同分类内去重 + 跨日去重（前2天已推送过的跳过）。"""
     candidates = [a for a in all_articles if a.get("scope") == scope]
     if not candidates:
         return []
     for a in candidates:
         a["_score"] = _score_article(a.get("title", ""), a.get("summary", ""))
     candidates.sort(key=lambda x: x["_score"], reverse=True)
-    return candidates[:target]
+
+    # 收集已用标题（同分类内已选 + 前2天已推送）
+    used_titles: list[str] = []
+    if previous_articles:
+        used_titles.extend(
+            a.get("title", "") for a in previous_articles
+            if a.get("scope") == scope and a.get("title")
+        )
+
+    selected: list[dict] = []
+    for c in candidates:
+        title = c.get("title", "")
+        too_similar = False
+        for used in used_titles:
+            if _titles_too_similar(title, used):
+                too_similar = True
+                break
+        if too_similar:
+            continue
+        selected.append(c)
+        used_titles.append(title)
+        if len(selected) >= target:
+            break
+    return selected[:target]
 
 
 # ---------------------------------------------------------------------------
@@ -279,7 +399,11 @@ def fetch_feed(source: dict, timeout: int = 10) -> list[dict]:
     return articles
 
 
-def fetch_articles(config: dict) -> tuple[list[dict], list[str]]:
+def fetch_articles(
+    config: dict,
+    output_dir: Path | None = None,
+    poster_date: dt.date | None = None,
+) -> tuple[list[dict], list[str]]:
     """抓取所有RSS源，按优先级评分后选出目标数量文章。"""
     all_articles: list[dict] = []
     errors: list[str] = []
@@ -299,19 +423,31 @@ def fetch_articles(config: dict) -> tuple[list[dict], list[str]]:
             deduped.append(a)
     all_articles = deduped
 
+    # 内容修正：国际频道里实质是关于中国的文章，改分到国内
+    _reclassify_domestic_articles(all_articles)
+
     articles: list[dict] = []
+    # 跨日去重：加载前 2 天已推送文章
+    prev_dir = output_dir or (ROOT / "output")
+    prev_date = poster_date or dt.date.today()
+    previous = _load_previous_articles(prev_dir, prev_date)
     for scope, target in (
         ("domestic", config.get("domestic_count", 10)),
         ("international", config.get("international_count", 6)),
     ):
-        selected = select_articles(all_articles, scope, target)
-        # 如果选出的文章不足，补充 fallback
+        selected = select_articles(all_articles, scope, target, previous)
+        # 如果选出的文章不足，补充 fallback（fallback 也要跨日去重）
         if len(selected) < target:
             fallback = [
                 a for a in config.get("fallback_articles", [])
                 if a.get("scope") == scope
             ]
             existing_titles = {a.get("title") for a in selected}
+            # 把前2天的标题也加入排除列表
+            existing_titles.update(
+                a.get("title", "") for a in previous
+                if a.get("scope") == scope and a.get("title")
+            )
             for fb in fallback:
                 if fb.get("title") not in existing_titles:
                     selected.append(fb)
@@ -598,7 +734,7 @@ def _enrich_article_content(article: dict) -> str:
     return text
 
 
-def ai_summarize_batch(articles: list[dict], limit: int = 68, api_key: str = "") -> None:
+def ai_summarize_batch(articles: list[dict], limit: int = 70, api_key: str = "") -> None:
     """用 DeepSeek API 对一批新闻做真正的 AI 摘要。
 
     与 summarize() 不同，这个函数让 AI 理解新闻后用自己的话浓缩成 limit 字以内的摘要，
@@ -632,12 +768,14 @@ def ai_summarize_batch(articles: list[dict], limit: int = 68, api_key: str = "")
 
     prompt = (
         f"你是一位为律师事务所资讯海报服务的新闻编辑。请为以下 {len(articles)} 条新闻各写一条摘要。\n"
-        f"每条摘要至少50字、不超过{limit}字（少于50字不合格）。必须有实质信息量：包含事件结果、法律要点、处罚金额、涉及人数等关键细节。\n"
-        "要求：\n"
-        "1. 用自己的话概括，补充标题中未提及的关键信息\n"
-        "2. 禁止使用\"据悉\"\"记者获悉\"\"X月X日\"等套话开头\n"
-        "3. 不要重复标题已有信息，要写出标题没说的核心内容\n"
-        "4. 严格按格式输出：序号. 摘要内容\n\n"
+        f"每条摘要至少50字、目标{limit}字左右。必须有实质信息量：包含事件结果、法律要点、处罚金额、涉及人数等关键细节。\n"
+        "禁止事项（出现即不合格）：\n"
+        "1. 禁止以\"据介绍\"\"相关负责人表示\"\"近年来\"等套话开头\n"
+        "2. 禁止整句照搬标题，必须补充标题之外的新信息\n"
+        "3. 禁止只说\"持续推进\"\"有序开展\"等无实质内容的空话\n"
+        "4. 每条必须包含至少一个具体事实（人名、地名、金额、时间、数据、法律条款）\n"
+        "5. 严格按格式输出：序号. 摘要内容\n"
+        "6. 禁止使用省略号（…）截断——每条摘要必须以完整句号结尾\n\n"
         + "\n\n".join(parts)
     )
 
@@ -666,9 +804,18 @@ def ai_summarize_batch(articles: list[dict], limit: int = 68, api_key: str = "")
             if m:
                 idx = int(m.group(1)) - 1
                 summary = m.group(2).strip()
-                if 0 <= idx < len(articles) and len(summary) >= 45:
-                    articles[idx]["summary"] = truncate(summary, limit)
-                    articles[idx]["_ai_summary"] = True
+                if 0 <= idx < len(articles) and len(summary) >= 50:
+                    # 去掉 AI 可能自带的省略号，用 truncate 干净截断
+                    summary = summary.rstrip("…。，,、；;：:！!？?")
+                    if len(summary) > limit:
+                        summary = truncate(summary + "。", limit)
+                    else:
+                        summary = truncate(summary, limit)
+                    if not summary.endswith("。"):
+                        summary += "。"
+                    if len(summary) >= 50:
+                        articles[idx]["summary"] = summary
+                        articles[idx]["_ai_summary"] = True
         print(f"  [AI摘要] 完成 {sum(1 for a in articles if a.get('_ai_summary'))}/{len(articles)} 条")
     except Exception as e:
         print(f"  [AI摘要] 调用失败: {e}")
@@ -697,6 +844,7 @@ def main() -> None:
 
     poster_date = dt.date.fromisoformat(args.date) if args.date else dt.date.today()
     config = load_json(ROOT / "config.json")
+    apply_env_overrides(config)  # CI 环境变量覆盖
     output_dir = Path(args.output_dir) if args.output_dir else (ROOT / "output")
     output_dir.mkdir(parents=True, exist_ok=True)
 
@@ -735,11 +883,48 @@ def main() -> None:
         with articles_path.open("r", encoding="utf-8") as f:
             articles = json.load(f)
         print(f"[文章] 从 {articles_path} 加载 {len(articles)} 条文章")
+        # 内容修正：国际频道里实质是关于中国的文章，改分到国内
+        _reclassify_domestic_articles(articles)
+        # AI 智能摘要（--articles-json 模式也要跑）
+        api_key = config.get("deepseek_api_key", "").strip()
+        if api_key:
+            print("[摘要] AI 智能摘要...")
+            for a in articles:
+                a["raw_summary"] = a.get("summary", "")
+            ai_summarize_batch(articles, limit=70, api_key=api_key)
+        else:
+            print("[摘要] 无 API key，跳过 AI 摘要")
+        # 按分类重选（含分类内去重 + 跨日去重），不足用 fallback 补齐
+        previous = _load_previous_articles(output_dir, poster_date)
+        selected: list[dict] = []
+        for scope, target in (
+            ("domestic", config.get("domestic_count", 10)),
+            ("international", config.get("international_count", 6)),
+        ):
+            s = select_articles(articles, scope, target, previous)
+            if len(s) < target:
+                fallback = [
+                    a for a in config.get("fallback_articles", [])
+                    if a.get("scope") == scope
+                ]
+                existing_titles = {a.get("title") for a in s}
+                existing_titles.update(
+                    a.get("title", "") for a in previous
+                    if a.get("scope") == scope and a.get("title")
+                )
+                for fb in fallback:
+                    if fb.get("title") not in existing_titles:
+                        s.append(fb)
+                    if len(s) >= target:
+                        break
+            selected.extend(s[:target])
+        articles = selected
+        print(f"[选稿] 去重后国内={len([a for a in articles if a.get('scope')=='domestic'])} 条，国际={len([a for a in articles if a.get('scope')=='international'])} 条")
     else:
         articles, errors = (
             (fallback_articles(config), [])
             if args.no_fetch
-            else fetch_articles(config)
+            else fetch_articles(config, output_dir, poster_date)
         )
         # 自动摘要：有 API key 用 AI，没 key 回退规则清洗
         if not args.no_fetch:
@@ -748,14 +933,14 @@ def main() -> None:
                 print("[摘要] AI 智能摘要...")
                 for a in articles:
                     a["raw_summary"] = a.get("summary", "")
-                ai_summarize_batch(articles, limit=68, api_key=api_key)
+                ai_summarize_batch(articles, limit=70, api_key=api_key)
                 # AI 未覆盖的文章回退到规则清洗
                 fallback_count = 0
                 for a in articles:
                     if not a.get("_ai_summary"):
                         raw = a.get("raw_content", "") or a.get("raw_summary", "") or a.get("summary", "")
                         improved = summarize(raw=raw, title=a.get("title", ""), limit=65)
-                        if improved and len(improved) >= 8:
+                        if improved and len(improved) >= 40:
                             a["summary"] = improved
                             fallback_count += 1
                 if fallback_count:
@@ -766,7 +951,7 @@ def main() -> None:
                     raw_summary = a.get("summary", "")
                     raw_title = a.get("title", "")
                     improved = summarize(raw=raw_summary or raw_title, title=raw_title, limit=65)
-                    if improved and len(improved) >= 8:
+                    if improved and len(improved) >= 40:
                         a["summary"] = improved
 
     # 2. 生成 HTML
