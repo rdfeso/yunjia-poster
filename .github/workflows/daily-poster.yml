@@ -2,8 +2,8 @@ name: 云嘉每日资讯海报
 
 on:
   schedule:
-    # 北京时间每天早上 6:00 (UTC 22:00 前一天)
-    - cron: "0 22 * * *"
+    # 目标北京时间早上 6-7 点 (UTC 20:00 凌晨4点低峰触发，延迟后落在 6-7 点)
+    - cron: "0 20 * * *"
   workflow_dispatch:  # 允许手动触发
 
 jobs:
@@ -34,18 +34,40 @@ jobs:
       - name: 准备配置（从模板生成 config.json）
         run: cp config.example.json config.json
 
-      - name: 步骤1 — RSS 抓取
-        run: python generate_poster.py --fetch-only --output-dir output
+      - name: 步骤1 — RSS 抓取（失败自动重试3次）
+        run: |
+          for i in 1 2 3; do
+            echo "=== 第 $i 次尝试 ==="
+            python generate_poster.py --fetch-only --output-dir output && break
+            echo "第 $i 次失败，10秒后重试..."
+            sleep 10
+          done
 
-      - name: 步骤2 — AI 摘要 + 海报生成 + 飞书推送
+      - name: 步骤2 — AI 摘要 + 海报生成 + 飞书推送（失败重试2次）
         run: |
           DATE_STR=$(date +%Y-%m-%d)
-          python generate_poster.py --articles-json "output/raw-articles-${DATE_STR}.json" --output-dir output
+          for i in 1 2 3; do
+            echo "=== 第 $i 次尝试 ==="
+            python generate_poster.py --articles-json "output/raw-articles-${DATE_STR}.json" --output-dir output && break
+            echo "第 $i 次失败，30秒后重试..."
+            sleep 30
+          done
         env:
           DEEPSEEK_API_KEY: ${{ secrets.DEEPSEEK_API_KEY }}
           FEISHU_APP_ID: ${{ secrets.FEISHU_APP_ID }}
           FEISHU_APP_SECRET: ${{ secrets.FEISHU_APP_SECRET }}
           FEISHU_CHAT_ID: ${{ secrets.FEISHU_CHAT_ID }}
+
+      - name: 推送失败告警
+        if: failure()
+        run: |
+          curl -s -X POST \
+            -H "Authorization: token ${{ secrets.GITHUB_TOKEN }}" \
+            -H "Accept: application/vnd.github.v3+json" \
+            "https://api.github.com/repos/${{ github.repository }}/issues" \
+            -d "{\"title\":\"[告警] 云嘉海报推送失败 $(date +%Y-%m-%d)\",\"body\":\"GitHub Actions 运行失败，请检查：\\nhttps://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}\"}"
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
       - name: 上传海报（调试用，保留7天）
         if: always()
