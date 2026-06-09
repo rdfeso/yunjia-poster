@@ -595,6 +595,8 @@ def build_html(config: dict, articles: list[dict], poster_date: dt.date) -> str:
         "{{QUOTE}}": html.escape(daily_quote),
         "{{QUOTE_SOURCE}}": html.escape(quote_source),
         "{{CONTACT_LABEL}}": html.escape(config["brand"].get("contact_label", "扫码关注")),
+        "{{ADDRESS}}": html.escape(config["brand"].get("address", "")),
+        "{{PHONE}}": html.escape(config["brand"].get("phone", "")),
         "{{DISCLAIMER}}": html.escape(config["disclaimer"]),
     }
     for k, v in repl.items():

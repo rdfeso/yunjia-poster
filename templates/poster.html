@@ -40,6 +40,8 @@
     .footer { margin: 28px 60px 0; display: grid; grid-template-columns: 1fr 176px; gap: 28px; padding: 26px 28px; color: #fff; background: #174b80; }
     .recruit-title { color: #e9c891; font-size: 17px; font-weight: 700; letter-spacing: 3px; }
     .recruit-text { margin-top: 10px; font-size: 20px; font-weight: 600; line-height: 1.7; letter-spacing: 1px; }
+    .contact-info { margin-top: 14px; display: flex; flex-direction: column; gap: 4px; font-size: 15px; color: rgba(255,255,255,.72); letter-spacing: 1px; }
+    .contact-item { line-height: 1.6; }
     .quote { margin-top: 17px; padding-top: 14px; border-top: 1px solid rgba(255,255,255,.18); color: rgba(255,255,255,.78); font-size: 18px; line-height: 1.7; }
     .qr-box { text-align: center; }
     .qr { width: 152px; height: 152px; padding: 6px; background: #fff; }
@@ -77,6 +79,10 @@
       <div>
         <div class="recruit-title">人才招募 · 合作共赢</div>
         <div class="recruit-text">{{RECRUITMENT}}</div>
+        <div class="contact-info">
+          <div class="contact-item">📍 {{ADDRESS}}</div>
+          <div class="contact-item">📞 {{PHONE}}</div>
+        </div>
         <div class="quote">{{QUOTE_SOURCE}}｜{{QUOTE}}</div>
       </div>
       <div class="qr-box">
