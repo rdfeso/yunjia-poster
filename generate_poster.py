@@ -235,6 +235,18 @@ def _score_article(title: str, summary: str) -> int:
         if w in title:
             score -= 5
             break
+    # 娱乐/八卦内容降权（不适合律所资讯海报）
+    _ENTERTAINMENT_KW = ["综艺", "明星", "娱乐", "网红", "真人秀", "亲子综艺", "电视剧", "电影"]
+    for w in _ENTERTAINMENT_KW:
+        if w in title:
+            score -= 10
+            break
+    # 软新闻/正能量宣传降权（无实质新闻价值）
+    _SOFT_NEWS_KW = ["点赞", "研修班", "体验", "喜讯", "佳话", "暖心", "感动", "成功举办", "圆满落幕", "顺利举行"]
+    for w in _SOFT_NEWS_KW:
+        if w in title:
+            score -= 5
+            break
     # 摘要空泛检测：套话词越多越空
     _FLUFF_WORDS = {
         "高质量", "深度融合", "良性循环", "新发展格局", "推动", "赋能", "持续优化",
@@ -265,6 +277,43 @@ def _titles_too_similar(title1: str, title2: str, min_common: int = 10) -> bool:
         else:
             break
     return common >= min_common
+
+
+# 高频通用词 2-gram，在话题去重中排除以避免误杀
+_COMMON_BIGRAMS = {
+    "中国", "国家", "全国", "国际", "社会", "发展", "经济",
+    "市场", "企业", "产业", "科技", "文化", "教育", "医疗",
+    "政府", "政策", "改革", "创新", "建设", "管理", "服务",
+    "工作", "推进", "推动", "加强", "提升", "促进", "保障",
+    "我们", "他们", "这个", "一个", "已经", "正在", "进行",
+    "表示", "发布", "最新", "近日", "日前", "正式", "持续",
+    "据介绍", "出台", "开展", "实施", "全面", "深入",
+}
+
+
+def _same_topic(title1: str, title2: str, min_overlap: int = 2) -> bool:
+    """通过 2-gram 重叠判断两标题是否同话题（事件级去重）。
+
+    例如 "2026年高考语文全国卷作文试题解析" 和 "北大教授谈高考作文天津卷"
+    共享 {"高考", "作文"} 两个 2-gram → 判为同话题。
+    """
+    if not title1 or not title2:
+        return False
+
+    def _bigrams(t: str) -> set[str]:
+        # 去掉数字、标点、常见前缀
+        t = re.sub(r"\d+", "", t)
+        # 去除非中文字符（保留中文汉字）
+        t = re.sub(r"[^\u4e00-\u9fff]", "", t)
+        t = re.sub(r"^(最新|聚焦|关注|走进|原标题)\s*[：:]?", "", t)
+        bg = set()
+        for i in range(len(t) - 1):
+            bg.add(t[i : i + 2])
+        return bg - _COMMON_BIGRAMS
+
+    b1 = _bigrams(title1)
+    b2 = _bigrams(title2)
+    return len(b1 & b2) >= min_overlap
 
 
 def _reclassify_domestic_articles(articles: list[dict]) -> None:
@@ -322,6 +371,17 @@ def select_articles(
         a["_score"] = _score_article(a.get("title", ""), a.get("summary", ""))
     candidates.sort(key=lambda x: x["_score"], reverse=True)
 
+    # 最低分数线：得分 ≤ -3 的直接淘汰（政论/空话/低质文章）
+    _MIN_SCORE = -5
+    before_filter = len(candidates)
+    candidates = [c for c in candidates if c["_score"] > _MIN_SCORE]
+    filtered_count = before_filter - len(candidates)
+    if filtered_count:
+        print(f"  [选稿] 淘汰低分文章 {filtered_count} 条 (得分≤{_MIN_SCORE})")
+
+    if not candidates:
+        return []
+
     # 收集已用标题（同分类内已选 + 前2天已推送）
     used_titles: list[str] = []
     if previous_articles:
@@ -335,7 +395,7 @@ def select_articles(
         title = c.get("title", "")
         too_similar = False
         for used in used_titles:
-            if _titles_too_similar(title, used):
+            if _titles_too_similar(title, used) or _same_topic(title, used):
                 too_similar = True
                 break
         if too_similar:
@@ -744,14 +804,68 @@ def _enrich_article_content(article: dict) -> str:
     return text
 
 
+def _ai_summarize_one(title: str, text: str, limit: int, api_key: str) -> str:
+    """对单条新闻调用 AI 生成摘要，返回摘要字符串（失败返回空字符串）。"""
+    import requests as req
+
+    prompt = (
+        "你是一位为律师事务所资讯海报服务的新闻编辑。请为以下新闻写一条摘要。\n"
+        f"摘要至少50字、严格不超过{limit}字（超出会被截断，导致语句不完整）。"
+        "必须有实质信息量：包含事件结果、法律要点、处罚金额、涉及人数等关键细节。\n"
+        "禁止事项（出现即不合格）：\n"
+        '1. 禁止以"据介绍""相关负责人表示""近年来"等套话开头\n'
+        "2. 禁止整句照搬标题，必须补充标题之外的新信息\n"
+        '3. 禁止只说"持续推进""有序开展"等无实质内容的空话\n'
+        "4. 必须包含至少一个具体事实（地名、金额、时间、数据、法律条款）\n"
+        "5. 禁止使用省略号（…）截断——摘要必须以完整句号结尾\n"
+        f"6. 输出前自检：摘要字数不超过{limit}字——宁可短一点，不要超长被切\n"
+        "\n"
+        f"标题：{title}\n"
+        f"内容：{text}\n\n"
+        "请直接输出摘要正文，不要加序号、不要加任何前缀或说明。"
+    )
+
+    try:
+        resp = req.post(
+            "https://api.deepseek.com/chat/completions",
+            headers={
+                "Authorization": f"Bearer {api_key}",
+                "Content-Type": "application/json",
+            },
+            json={
+                "model": "deepseek-chat",
+                "messages": [{"role": "user", "content": prompt}],
+                "max_tokens": 500,
+                "temperature": 0.1,
+            },
+            timeout=30,
+        )
+        if resp.status_code != 200:
+            return ""
+        summary = resp.json()["choices"][0]["message"]["content"].strip()
+        # 清理 AI 可能加的前缀
+        summary = re.sub(r"^(摘要[：:]\s*)", "", summary)
+        summary = summary.rstrip("…。，、；：！？")
+        if len(summary) > limit:
+            summary = truncate(summary + "。", limit)
+        else:
+            summary = truncate(summary, limit)
+        if not summary.endswith("。"):
+            summary += "。"
+        return summary if len(summary) >= 40 else ""
+    except Exception:
+        return ""
+
+
+
 def ai_summarize_batch(articles: list[dict], limit: int = 70, api_key: str = "") -> None:
-    """用 DeepSeek API 对一批新闻做真正的 AI 摘要。
+    """用 DeepSeek API 对一批新闻逐条做 AI 摘要（每条独立调用，杜绝串稿）。
 
     与 summarize() 不同，这个函数让 AI 理解新闻后用自己的话浓缩成 limit 字以内的摘要，
     而不是摘抄原文开头。
     当 RSS 摘要不足以支撑 AI 理解时，会自动从原文 URL 获取完整内容。
     """
-    import requests as req
+    import time
 
     if not articles or not api_key:
         return
@@ -770,72 +884,22 @@ def ai_summarize_batch(articles: list[dict], limit: int = 70, api_key: str = "")
     if enriched_count:
         print(f"  [AI摘要] {enriched_count} 条内容不足，已从原文补充")
 
-    parts = []
+    success = 0
     for i, a in enumerate(articles):
         title = a.get("title", "")
         text = a.get("_feed_text", "")
-        parts.append(f"[{i + 1}] 标题：{title}\n内容：{text}")
+        summary = _ai_summarize_one(title, text, limit, api_key)
+        if summary and len(summary) >= 40:
+            a["summary"] = summary
+            a["_ai_summary"] = True
+            success += 1
+        if i < len(articles) - 1:
+            time.sleep(0.3)  # 避免触发速率限制
 
-    prompt = (
-        f"你是一位为律师事务所资讯海报服务的新闻编辑。请为以下 {len(articles)} 条新闻各写一条摘要。\n"
-        f"每条摘要至少50字、严格不超过{limit}字（超出会被截断，导致语句不完整）。必须有实质信息量：包含事件结果、法律要点、处罚金额、涉及人数等关键细节。\n"
-        "禁止事项（出现即不合格）：\n"
-        "1. 禁止以\"据介绍\"\"相关负责人表示\"\"近年来\"等套话开头\n"
-        "2. 禁止整句照搬标题，必须补充标题之外的新信息\n"
-        "3. 禁止只说\"持续推进\"\"有序开展\"等无实质内容的空话\n"
-        "4. 每条必须包含至少一个具体事实（人名、地名、金额、时间、数据、法律条款）\n"
-        "5. 严格按格式输出：序号. 摘要内容\n"
-        "6. 禁止使用省略号（…）截断——每条摘要必须以完整句号结尾\n"
-        f"7. 输出前自检：数一下每条摘要的字数，确保不超过{limit}字——宁可短一点，不要超长被切\n\n"
-        + "\n\n".join(parts)
-    )
-
-    try:
-        resp = req.post(
-            "https://api.deepseek.com/chat/completions",
-            headers={
-                "Authorization": f"Bearer {api_key}",
-                "Content-Type": "application/json",
-            },
-            json={
-                "model": "deepseek-chat",
-                "messages": [{"role": "user", "content": prompt}],
-                "max_tokens": 3000,
-                "temperature": 0.3,
-            },
-            timeout=45,
-        )
-        if resp.status_code != 200:
-            print(f"  [AI摘要] API 错误 {resp.status_code}: {resp.text[:100]}")
-            return
-
-        content = resp.json()["choices"][0]["message"]["content"].strip()
-        for line in content.split("\n"):
-            m = re.match(r"^(\d+)[\.、)]\s*(.+)", line.strip())
-            if m:
-                idx = int(m.group(1)) - 1
-                summary = m.group(2).strip()
-                if 0 <= idx < len(articles) and len(summary) >= 50:
-                    # 去掉 AI 可能自带的省略号，用 truncate 干净截断
-                    summary = summary.rstrip("…。，,、；;：:！!？?")
-                    if len(summary) > limit:
-                        summary = truncate(summary + "。", limit)
-                    else:
-                        summary = truncate(summary, limit)
-                    if not summary.endswith("。"):
-                        summary += "。"
-                    if len(summary) >= 50:
-                        articles[idx]["summary"] = summary
-                        articles[idx]["_ai_summary"] = True
-        print(f"  [AI摘要] 完成 {sum(1 for a in articles if a.get('_ai_summary'))}/{len(articles)} 条")
-    except Exception as e:
-        print(f"  [AI摘要] 调用失败: {e}")
-        print("  将回退到规则摘要...")
+    print(f"  [AI摘要] 完成 {success}/{len(articles)} 条")
 
 
-# ---------------------------------------------------------------------------
-# 主流程
-# ---------------------------------------------------------------------------
+
 
 def main() -> None:
     parser = argparse.ArgumentParser(description="云嘉每日资讯海报 - 抓取/生成/导出/推送")
