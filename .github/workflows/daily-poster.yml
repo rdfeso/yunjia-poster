@@ -2,8 +2,8 @@ name: 云嘉每日资讯海报
 
 on:
   schedule:
-    # UTC 22:00 = 北京时间次日 06:00
-    - cron: "0 22 * * *"
+    # UTC 20:00 = 北京时间次日 04:00（留足4小时缓冲，确保8点前到）
+    - cron: "0 20 * * *"
   workflow_dispatch:
     inputs:
       date:
