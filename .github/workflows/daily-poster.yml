@@ -2,9 +2,14 @@ name: 云嘉每日资讯海报
 
 on:
   schedule:
-    # 目标北京时间早上 6-7 点 (UTC 20:00 凌晨4点低峰触发，延迟后落在 6-7 点)
-    - cron: "0 20 * * *"
-  workflow_dispatch:  # 允许手动触发
+    # UTC 22:00 = 北京时间次日 06:00
+    - cron: "0 22 * * *"
+  workflow_dispatch:
+    inputs:
+      date:
+        description: '海报日期 (格式: YYYY-MM-DD，默认今天)'
+        required: false
+        type: string
 
 jobs:
   build-and-push:
@@ -36,19 +41,26 @@ jobs:
 
       - name: 步骤1 — RSS 抓取（失败自动重试3次）
         run: |
+          DATE_STR="${{ github.event.inputs.date || '' }}"
+          if [ -z "$DATE_STR" ]; then
+            DATE_STR=$(TZ=Asia/Shanghai date +%Y-%m-%d)
+          fi
           for i in 1 2 3; do
             echo "=== 第 $i 次尝试 ==="
-            python generate_poster.py --fetch-only --output-dir output && break
+            python generate_poster.py --fetch-only --output-dir output --date "$DATE_STR" && break
             echo "第 $i 次失败，10秒后重试..."
             sleep 10
           done
 
-      - name: 步骤2 — AI 摘要 + 海报生成 + 飞书推送（失败重试2次）
+      - name: 步骤2 — AI 摘要 + 海报生成 + 飞书推送（失败重试3次）
         run: |
-          DATE_STR=$(date +%Y-%m-%d)
+          DATE_STR="${{ github.event.inputs.date || '' }}"
+          if [ -z "$DATE_STR" ]; then
+            DATE_STR=$(TZ=Asia/Shanghai date +%Y-%m-%d)
+          fi
           for i in 1 2 3; do
             echo "=== 第 $i 次尝试 ==="
-            python generate_poster.py --articles-json "output/raw-articles-${DATE_STR}.json" --output-dir output && break
+            python generate_poster.py --articles-json "output/raw-articles-${DATE_STR}.json" --output-dir output --date "$DATE_STR" && break
             echo "第 $i 次失败，30秒后重试..."
             sleep 30
           done
