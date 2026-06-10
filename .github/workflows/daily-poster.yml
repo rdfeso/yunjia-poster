@@ -7,11 +7,6 @@ on:
     # UTC 21:00 = 北京时间次日 05:00（双保险，防第一次被跳过）
     - cron: "0 21 * * *"
   workflow_dispatch:
-    inputs:
-      date:
-        description: '海报日期 (格式: YYYY-MM-DD，默认今天)'
-        required: false
-        type: string
 
 jobs:
   build-and-push:
@@ -84,10 +79,7 @@ sys.exit(0 if not found else 1)
       - name: 步骤1 — RSS 抓取（失败自动重试3次）
         if: steps.check.outputs.skip != 'true'
         run: |
-          DATE_STR="${{ github.event.inputs.date || '' }}"
-          if [ -z "$DATE_STR" ]; then
-            DATE_STR=$(TZ=Asia/Shanghai date +%Y-%m-%d)
-          fi
+          DATE_STR=$(TZ=Asia/Shanghai date +%Y-%m-%d)
           for i in 1 2 3; do
             echo "=== 第 $i 次尝试 ==="
             python generate_poster.py --fetch-only --output-dir output --date "$DATE_STR" && break
@@ -98,10 +90,7 @@ sys.exit(0 if not found else 1)
       - name: 步骤2 — AI 摘要 + 海报生成 + 飞书推送（失败重试3次）
         if: steps.check.outputs.skip != 'true'
         run: |
-          DATE_STR="${{ github.event.inputs.date || '' }}"
-          if [ -z "$DATE_STR" ]; then
-            DATE_STR=$(TZ=Asia/Shanghai date +%Y-%m-%d)
-          fi
+          DATE_STR=$(TZ=Asia/Shanghai date +%Y-%m-%d)
           for i in 1 2 3; do
             echo "=== 第 $i 次尝试 ==="
             python generate_poster.py --articles-json "output/raw-articles-${DATE_STR}.json" --output-dir output --date "$DATE_STR" && break
