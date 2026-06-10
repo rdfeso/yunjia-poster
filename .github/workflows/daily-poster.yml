@@ -2,8 +2,10 @@ name: 云嘉每日资讯海报
 
 on:
   schedule:
-    # UTC 20:00 = 北京时间次日 04:00（留足4小时缓冲，确保8点前到）
+    # UTC 20:00 = 北京时间次日 04:00
     - cron: "0 20 * * *"
+    # UTC 21:00 = 北京时间次日 05:00（双保险，防第一次被跳过）
+    - cron: "0 21 * * *"
   workflow_dispatch:
     inputs:
       date:
@@ -17,29 +19,70 @@ jobs:
     timeout-minutes: 15
 
     steps:
+      - name: 检查今日是否已生成（避免重复推送）
+        id: check
+        if: github.event_name == 'schedule'
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          TODAY=$(TZ=Asia/Shanghai date +%Y-%m-%d)
+          echo "今日日期（北京）: $TODAY"
+
+          # 查最近 successful 运行，用本次 run_id 把自己排除
+          RUNS=$(curl -s -H "Authorization: token $GITHUB_TOKEN" \
+            -H "Accept: application/vnd.github.v3+json" \
+            "https://api.github.com/repos/${{ github.repository }}/actions/runs?status=success&per_page=5&event=schedule")
+
+          echo "$RUNS" | python3 -c "
+import sys, json
+data = json.load(sys.stdin)
+today = '$TODAY'
+this_run = '${{ github.run_id }}'
+found = False
+for run in data.get('workflow_runs', []):
+    rid = str(run.get('id', ''))
+    created = run.get('created_at', '')
+    if rid == this_run:
+        continue
+    if today in created:
+        print(f'SKIP: run {rid} 已于 {created} 成功')
+        found = True
+        break
+if not found:
+    print('OK: 今日尚无成功运行')
+sys.exit(0 if not found else 1)
+" && echo "skip=false" >> $GITHUB_OUTPUT || echo "skip=true" >> $GITHUB_OUTPUT
+
       - name: 检出代码
+        if: steps.check.outputs.skip != 'true'
         uses: actions/checkout@v4
 
       - name: 设置 Python
+        if: steps.check.outputs.skip != 'true'
         uses: actions/setup-python@v5
         with:
           python-version: "3.13"
 
       - name: 安装依赖
+        if: steps.check.outputs.skip != 'true'
         run: pip install -r requirements.txt
 
       - name: 安装 Playwright Chromium
+        if: steps.check.outputs.skip != 'true'
         run: python -m playwright install chromium
 
       - name: 安装中文字体
+        if: steps.check.outputs.skip != 'true'
         run: |
           sudo apt-get update -qq
           sudo apt-get install -y -qq fonts-noto-cjk
 
       - name: 准备配置（从模板生成 config.json）
+        if: steps.check.outputs.skip != 'true'
         run: cp config.example.json config.json
 
       - name: 步骤1 — RSS 抓取（失败自动重试3次）
+        if: steps.check.outputs.skip != 'true'
         run: |
           DATE_STR="${{ github.event.inputs.date || '' }}"
           if [ -z "$DATE_STR" ]; then
@@ -53,6 +96,7 @@ jobs:
           done
 
       - name: 步骤2 — AI 摘要 + 海报生成 + 飞书推送（失败重试3次）
+        if: steps.check.outputs.skip != 'true'
         run: |
           DATE_STR="${{ github.event.inputs.date || '' }}"
           if [ -z "$DATE_STR" ]; then
