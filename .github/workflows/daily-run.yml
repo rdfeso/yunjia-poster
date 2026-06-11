@@ -12,23 +12,26 @@ jobs:
     timeout-minutes: 25
 
     steps:
-      - name: Check if already run today (schedule only)
+      - name: Check if should skip (schedule dedup)
         id: check
-        if: github.event_name == 'schedule'
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           REPO: ${{ github.repository }}
+          EVENT: ${{ github.event_name }}
         run: |
+          echo "skip=false" >> "$GITHUB_OUTPUT"
+          if [ "$EVENT" != "schedule" ]; then
+            echo "非 schedule 事件，不跳过"
+            exit 0
+          fi
+
           TODAY_SH=$(TZ=Asia/Shanghai date +%Y-%m-%d)
           echo "today=$TODAY_SH" >> "$GITHUB_OUTPUT"
-          SKIP=false
 
-          # 获取今天成功的 schedule runs
           API_URL="https://api.github.com/repos/${REPO}/actions/runs"
           API_URL="${API_URL}?status=success&per_page=20&event=schedule"
           RESP=$(curl -s -H "Authorization: token $GH_TOKEN" "$API_URL")
 
-          # 用 python3 正确判断（上海时区）
           RESULT=$(echo "$RESP" | python3 -c "
           import sys, json
           from datetime import datetime, timezone, timedelta
@@ -44,13 +47,11 @@ jobs:
           ")
 
           if [ "$RESULT" = "skip" ]; then
-            SKIP=true
+            echo "skip=true" >> "$GITHUB_OUTPUT"
             echo "今天已有成功运行，跳过"
           else
             echo "今天尚无成功运行，继续执行"
           fi
-
-          echo "skip=$SKIP" >> "$GITHUB_OUTPUT"
 
       - name: Checkout
         if: steps.check.outputs.skip != 'true'
