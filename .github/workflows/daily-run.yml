@@ -1,11 +1,6 @@
 name: Daily Poster
 
 on:
-  push:
-    branches:
-      - main
-    paths:
-      - ".github/workflows/daily-run.yml"
   schedule:
     - cron: "0 20 * * *"
     - cron: "0 21 * * *"
@@ -17,11 +12,7 @@ jobs:
     timeout-minutes: 25
 
     steps:
-      - name: Activation (push only - no-op)
-        if: github.event_name == 'push'
-        run: echo "Workflow re-parsed successfully."
-
-      - name: Check if already run today (timezone-aware)
+      - name: Check if already run today (schedule only)
         id: check
         if: github.event_name == 'schedule'
         env:
@@ -32,35 +23,31 @@ jobs:
           echo "today=$TODAY_SH" >> "$GITHUB_OUTPUT"
           SKIP=false
 
-          # 用 Python 正确比对上海时区日期
-          PAYLOAD=$(curl -s \
-            -H "Authorization: token $GH_TOKEN" \
-            -H "Accept: application/vnd.github.v3+json" \
-            "https://api.github.com/repos/${REPO}/actions/runs?status=success&per_page=10&event=schedule")
+          # 获取今天成功的 schedule runs
+          API_URL="https://api.github.com/repos/${REPO}/actions/runs"
+          API_URL="${API_URL}?status=success&per_page=20&event=schedule"
+          RESP=$(curl -s -H "Authorization: token $GH_TOKEN" "$API_URL")
 
-          SHOULD_SKIP=$(echo "$PAYLOAD" | python3 -c "
-import sys, json
-from datetime import datetime, timezone, timedelta
+          # 用 python3 正确判断（上海时区）
+          RESULT=$(echo "$RESP" | python3 -c "
+          import sys, json
+          from datetime import datetime, timezone, timedelta
+          data = json.load(sys.stdin)
+          sh = timezone(timedelta(hours=8))
+          today = datetime.now(sh).date()
+          for r in data.get('workflow_runs', []):
+              d = datetime.fromisoformat(r['created_at'].replace('Z','+00:00'))
+              if d.astimezone(sh).date() == today:
+                  print('skip')
+                  sys.exit()
+          print('run')
+          ")
 
-data = json.load(sys.stdin)
-sh_tz = timezone(timedelta(hours=8))
-today_sh = datetime.now(sh_tz).date()
-
-for run in data.get('workflow_runs', []):
-    created = datetime.fromisoformat(run['created_at'].replace('Z', '+00:00'))
-    created_sh_date = created.astimezone(sh_tz).date()
-    if created_sh_date == today_sh:
-        print('true')
-        sys.exit(0)
-
-print('false')
-")
-
-          if [ "$SHOULD_SKIP" = "true" ]; then
+          if [ "$RESULT" = "skip" ]; then
             SKIP=true
-            echo "✅ 今天已有成功运行，跳过"
+            echo "今天已有成功运行，跳过"
           else
-            echo "🚀 今天尚无成功运行，继续执行"
+            echo "今天尚无成功运行，继续执行"
           fi
 
           echo "skip=$SKIP" >> "$GITHUB_OUTPUT"
@@ -75,17 +62,11 @@ print('false')
         with:
           python-version: "3.13"
 
-      - name: Install dependencies
-        if: steps.check.outputs.skip != 'true'
-        run: pip install -r requirements.txt
-
-      - name: Install Playwright Chromium
-        if: steps.check.outputs.skip != 'true'
-        run: python -m playwright install chromium
-
-      - name: Install Chinese fonts
+      - name: Install deps + Playwright + fonts
         if: steps.check.outputs.skip != 'true'
         run: |
+          pip install -r requirements.txt
+          python -m playwright install chromium
           sudo apt-get update -qq
           sudo apt-get install -y -qq fonts-noto-cjk
 
@@ -97,11 +78,7 @@ print('false')
         if: steps.check.outputs.skip != 'true'
         run: |
           DATE_STR=$(TZ=Asia/Shanghai date +%Y-%m-%d)
-          for i in 1 2 3; do
-            echo "=== Attempt $i ==="
-            python generate_poster.py --fetch-only --output-dir output --date "$DATE_STR" && break
-            sleep 10
-          done
+          python generate_poster.py --fetch-only --output-dir output --date "$DATE_STR"
 
       - name: Step 2 - AI summary + Generate + Push Feishu
         if: steps.check.outputs.skip != 'true'
@@ -112,14 +89,10 @@ print('false')
           FEISHU_CHAT_ID: ${{ secrets.FEISHU_CHAT_ID }}
         run: |
           DATE_STR=$(TZ=Asia/Shanghai date +%Y-%m-%d)
-          for i in 1 2 3; do
-            echo "=== Attempt $i ==="
-            python generate_poster.py \
-              --articles-json "output/raw-articles-${DATE_STR}.json" \
-              --output-dir output \
-              --date "$DATE_STR" && break
-            sleep 30
-          done
+          python generate_poster.py \
+            --articles-json "output/raw-articles-${DATE_STR}.json" \
+            --output-dir output \
+            --date "$DATE_STR"
 
       - name: Upload poster artifact
         if: steps.check.outputs.skip != 'true'
