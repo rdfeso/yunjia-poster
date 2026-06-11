@@ -112,7 +112,7 @@ sys.exit(0 if not found else 1)
           FEISHU_CHAT_ID: ${{ secrets.FEISHU_CHAT_ID }}
 
       - name: Upload poster artifact
-        if: always() && github.event_name != 'push'
+        if: github.event_name != 'push'
         uses: actions/upload-artifact@v4
         with:
           name: daily-poster
