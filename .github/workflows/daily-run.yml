@@ -1,11 +1,6 @@
 name: Daily Poster
 
 on:
-  push:
-    branches:
-      - main
-    paths:
-      - ".github/workflows/daily-run.yml"
   schedule:
     - cron: "0 20 * * *"
     - cron: "0 21 * * *"
@@ -17,59 +12,80 @@ jobs:
     timeout-minutes: 25
 
     steps:
-      - name: Activation check (push only)
-        if: github.event_name == 'push'
-        run: echo "Activation run - no work to do."
-
-      - name: Check if already run today
+      - name: Check if already run today (timezone-aware)
         id: check
         if: github.event_name == 'schedule'
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           REPO: ${{ github.repository }}
         run: |
-          TODAY=$(TZ=Asia/Shanghai date +%Y-%m-%d)
-          echo "today=$TODAY" >> "$GITHUB_OUTPUT"
+          TODAY_SH=$(TZ=Asia/Shanghai date +%Y-%m-%d)
+          echo "today=$TODAY_SH" >> "$GITHUB_OUTPUT"
           SKIP=false
-          RUNS=$(curl -s \
+
+          # 用 Python 正确比对上海时区日期
+          PAYLOAD=$(curl -s \
             -H "Authorization: token $GH_TOKEN" \
             -H "Accept: application/vnd.github.v3+json" \
             "https://api.github.com/repos/${REPO}/actions/runs?status=success&per_page=10&event=schedule")
-          if echo "$RUNS" | grep -q "$TODAY"; then
+
+          SHOULD_SKIP=$(echo "$PAYLOAD" | python3 -c "
+import sys, json
+from datetime import datetime, timezone, timedelta
+
+data = json.load(sys.stdin)
+sh_tz = timezone(timedelta(hours=8))
+today_sh = datetime.now(sh_tz).date()
+
+for run in data.get('workflow_runs', []):
+    created = datetime.fromisoformat(run['created_at'].replace('Z', '+00:00'))
+    created_sh_date = created.astimezone(sh_tz).date()
+    if created_sh_date == today_sh:
+        print('true')
+        sys.exit(0)
+
+print('false')
+")
+
+          if [ "$SHOULD_SKIP" = "true" ]; then
             SKIP=true
+            echo "✅ 今天已有成功运行，跳过"
+          else
+            echo "🚀 今天尚无成功运行，继续执行"
           fi
+
           echo "skip=$SKIP" >> "$GITHUB_OUTPUT"
 
       - name: Checkout
-        if: steps.check.outputs.skip != 'true' && github.event_name != 'push'
+        if: steps.check.outputs.skip != 'true'
         uses: actions/checkout@v4
 
       - name: Setup Python
-        if: steps.check.outputs.skip != 'true' && github.event_name != 'push'
+        if: steps.check.outputs.skip != 'true'
         uses: actions/setup-python@v5
         with:
           python-version: "3.13"
 
       - name: Install dependencies
-        if: steps.check.outputs.skip != 'true' && github.event_name != 'push'
+        if: steps.check.outputs.skip != 'true'
         run: pip install -r requirements.txt
 
       - name: Install Playwright Chromium
-        if: steps.check.outputs.skip != 'true' && github.event_name != 'push'
+        if: steps.check.outputs.skip != 'true'
         run: python -m playwright install chromium
 
       - name: Install Chinese fonts
-        if: steps.check.outputs.skip != 'true' && github.event_name != 'push'
+        if: steps.check.outputs.skip != 'true'
         run: |
           sudo apt-get update -qq
           sudo apt-get install -y -qq fonts-noto-cjk
 
       - name: Prepare config
-        if: steps.check.outputs.skip != 'true' && github.event_name != 'push'
+        if: steps.check.outputs.skip != 'true'
         run: cp config.example.json config.json
 
       - name: Step 1 - Fetch RSS
-        if: steps.check.outputs.skip != 'true' && github.event_name != 'push'
+        if: steps.check.outputs.skip != 'true'
         run: |
           DATE_STR=$(TZ=Asia/Shanghai date +%Y-%m-%d)
           for i in 1 2 3; do
@@ -79,7 +95,7 @@ jobs:
           done
 
       - name: Step 2 - AI summary + Generate + Push Feishu
-        if: steps.check.outputs.skip != 'true' && github.event_name != 'push'
+        if: steps.check.outputs.skip != 'true'
         env:
           DEEPSEEK_API_KEY: ${{ secrets.DEEPSEEK_API_KEY }}
           FEISHU_APP_ID: ${{ secrets.FEISHU_APP_ID }}
@@ -97,7 +113,7 @@ jobs:
           done
 
       - name: Upload poster artifact
-        if: github.event_name != 'push'
+        if: steps.check.outputs.skip != 'true'
         uses: actions/upload-artifact@v4
         with:
           name: daily-poster
