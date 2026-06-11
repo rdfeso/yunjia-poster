@@ -1,0 +1,111 @@
+name: Daily Poster
+
+on:
+  schedule:
+    - cron: "0 20 * * *"
+    - cron: "0 21 * * *"
+  workflow_dispatch:
+
+jobs:
+  build-and-push:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    steps:
+      - name: Check if already run today
+        id: check
+        if: github.event_name == 'schedule'
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          TODAY=$(TZ=Asia/Shanghai date +%Y-%m-%d)
+          echo "today=$TODAY" >> $GITHUB_OUTPUT
+
+          RUNS=$(curl -s \
+            -H "Authorization: token $GITHUB_TOKEN" \
+            -H "Accept: application/vnd.github.v3+json" \
+            "https://api.github.com/repos/${{ github.repository }}/actions/runs?status=success&per_page=10&event=schedule")
+
+          echo "$RUNS" | python3 -c "
+import sys, json
+data = json.load(sys.stdin)
+today = '$TODAY'
+this_run = '${{ github.run_id }}'
+found = False
+for run in data.get('workflow_runs', []):
+    rid = str(run.get('id', ''))
+    created = run.get('created_at', '')
+    if rid == this_run:
+        continue
+    if today in created:
+        print(f'Already ran: {rid} at {created}')
+        found = True
+        break
+if not found:
+    print('No successful run today, proceeding')
+sys.exit(0 if not found else 1)
+" && echo "skip=false" >> $GITHUB_OUTPUT || echo "skip=true" >> $GITHUB_OUTPUT
+
+      - name: Checkout
+        if: steps.check.outputs.skip != 'true'
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        if: steps.check.outputs.skip != 'true'
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+
+      - name: Install dependencies
+        if: steps.check.outputs.skip != 'true'
+        run: pip install -r requirements.txt
+
+      - name: Install Playwright Chromium
+        if: steps.check.outputs.skip != 'true'
+        run: python -m playwright install chromium
+
+      - name: Install Chinese fonts
+        if: steps.check.outputs.skip != 'true'
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq fonts-noto-cjk
+
+      - name: Prepare config
+        if: steps.check.outputs.skip != 'true'
+        run: cp config.example.json config.json
+
+      - name: Step 1 - Fetch RSS
+        if: steps.check.outputs.skip != 'true'
+        run: |
+          DATE_STR=$(TZ=Asia/Shanghai date +%Y-%m-%d)
+          for i in 1 2 3; do
+            echo "=== Attempt $i ==="
+            python generate_poster.py --fetch-only --output-dir output --date "$DATE_STR" && break
+            sleep 10
+          done
+
+      - name: Step 2 - AI summary + Generate + Push Feishu
+        if: steps.check.outputs.skip != 'true'
+        run: |
+          DATE_STR=$(TZ=Asia/Shanghai date +%Y-%m-%d)
+          for i in 1 2 3; do
+            echo "=== Attempt $i ==="
+            python generate_poster.py \
+              --articles-json "output/raw-articles-${DATE_STR}.json" \
+              --output-dir output \
+              --date "$DATE_STR" && break
+            sleep 30
+          done
+        env:
+          DEEPSEEK_API_KEY: ${{ secrets.DEEPSEEK_API_KEY }}
+          FEISHU_APP_ID: ${{ secrets.FEISHU_APP_ID }}
+          FEISHU_APP_SECRET: ${{ secrets.FEISHU_APP_SECRET }}
+          FEISHU_CHAT_ID: ${{ secrets.FEISHU_CHAT_ID }}
+
+      - name: Upload poster artifact
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: daily-poster
+          path: output/*.png
+          retention-days: 7
