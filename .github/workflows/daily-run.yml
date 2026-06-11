@@ -17,6 +17,10 @@ jobs:
     timeout-minutes: 25
 
     steps:
+      - name: Skip on push (activation only)
+        if: github.event_name == 'push'
+        run: echo "Push trigger - activation run only, skipping all work."
+
       - name: Check if already run today
         id: check
         if: github.event_name == 'schedule'
@@ -52,35 +56,35 @@ sys.exit(0 if not found else 1)
 " && echo "skip=false" >> $GITHUB_OUTPUT || echo "skip=true" >> $GITHUB_OUTPUT
 
       - name: Checkout
-        if: steps.check.outputs.skip != 'true'
+        if: steps.check.outputs.skip != 'true' && github.event_name != 'push'
         uses: actions/checkout@v4
 
       - name: Setup Python
-        if: steps.check.outputs.skip != 'true'
+        if: steps.check.outputs.skip != 'true' && github.event_name != 'push'
         uses: actions/setup-python@v5
         with:
           python-version: "3.13"
 
       - name: Install dependencies
-        if: steps.check.outputs.skip != 'true'
+        if: steps.check.outputs.skip != 'true' && github.event_name != 'push'
         run: pip install -r requirements.txt
 
       - name: Install Playwright Chromium
-        if: steps.check.outputs.skip != 'true'
+        if: steps.check.outputs.skip != 'true' && github.event_name != 'push'
         run: python -m playwright install chromium
 
       - name: Install Chinese fonts
-        if: steps.check.outputs.skip != 'true'
+        if: steps.check.outputs.skip != 'true' && github.event_name != 'push'
         run: |
           sudo apt-get update -qq
           sudo apt-get install -y -qq fonts-noto-cjk
 
       - name: Prepare config
-        if: steps.check.outputs.skip != 'true'
+        if: steps.check.outputs.skip != 'true' && github.event_name != 'push'
         run: cp config.example.json config.json
 
       - name: Step 1 - Fetch RSS
-        if: steps.check.outputs.skip != 'true'
+        if: steps.check.outputs.skip != 'true' && github.event_name != 'push'
         run: |
           DATE_STR=$(TZ=Asia/Shanghai date +%Y-%m-%d)
           for i in 1 2 3; do
@@ -90,7 +94,7 @@ sys.exit(0 if not found else 1)
           done
 
       - name: Step 2 - AI summary + Generate + Push Feishu
-        if: steps.check.outputs.skip != 'true'
+        if: steps.check.outputs.skip != 'true' && github.event_name != 'push'
         run: |
           DATE_STR=$(TZ=Asia/Shanghai date +%Y-%m-%d)
           for i in 1 2 3; do
@@ -108,7 +112,7 @@ sys.exit(0 if not found else 1)
           FEISHU_CHAT_ID: ${{ secrets.FEISHU_CHAT_ID }}
 
       - name: Upload poster artifact
-        if: always()
+        if: always() && github.event_name != 'push'
         uses: actions/upload-artifact@v4
         with:
           name: daily-poster
