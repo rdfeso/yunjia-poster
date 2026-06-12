@@ -1,0 +1,100 @@
+name: Watchdog - Daily Poster Fallback
+
+on:
+  schedule:
+    - cron: "30 23 * * *"   # 北京 07:30
+    - cron: "0 0 * * *"     # 北京 08:00
+    - cron: "30 0 * * *"    # 北京 08:30
+  workflow_dispatch:
+
+jobs:
+  check-and-trigger:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+
+    steps:
+      - name: Check if main workflow ran today
+        id: check
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          REPO: ${{ github.repository }}
+        run: |
+          TODAY_SH=$(TZ=Asia/Shanghai date +%Y-%m-%d)
+          echo "today=$TODAY_SH" >> "$GITHUB_OUTPUT"
+
+          # Check for ANY successful run of Daily Poster today (schedule OR dispatch)
+          API_URL="https://api.github.com/repos/${REPO}/actions/runs"
+          API_URL="${API_URL}?status=success&per_page=20&event=workflow_dispatch"
+          RESP1=$(curl -s -H "Authorization: token $GH_TOKEN" "$API_URL")
+
+          API_URL2="https://api.github.com/repos/${REPO}/actions/runs"
+          API_URL2="${API_URL2}?status=success&per_page=20&event=schedule"
+          RESP2=$(curl -s -H "Authorization: token $GH_TOKEN" "$API_URL2")
+
+          RESULT=$(echo "$RESP1$RESP2" | python3 -c "
+          import sys, json
+          from datetime import datetime, timezone, timedelta
+          data = json.load(sys.stdin) if isinstance(json.loads(sys.stdin.read() if False else '[]'), list) else []
+          sh = timezone(timedelta(hours=8))
+          today = datetime.now(sh).date()
+          # Parse combined response
+          import re
+          raw = sys.stdin.read()
+          # Try parsing as array of arrays or merged
+          found = False
+          try:
+            items = json.loads(raw)
+            if isinstance(items, list):
+              for r in items:
+                d = datetime.fromisoformat(r['created_at'].replace('Z','+00:00'))
+                if d.astimezone(sh).date() == today:
+                  found = True
+                  break
+          except:
+            pass
+          print('skip' if found else 'trigger')
+          " 2>/dev/null || echo "trigger")
+
+          # Simpler approach: use python to check both
+          python3 << 'PYEOF'
+          import os, json, urllib.request
+          from datetime import datetime, timezone, timedelta
+          token = os.environ["GH_TOKEN"]
+          repo = os.environ["REPO"]
+          sh = timezone(timedelta(hours=8))
+          today = datetime.now(sh).date()
+
+          headers = {"Authorization": f"token {token}", "Accept": "application/vnd.github.v3+json"}
+          events = ["workflow_dispatch", "schedule"]
+          found = False
+          for evt in events:
+              url = f"https://api.github.com/repos/{repo}/actions/runs?status=success&per_page=20&event={evt}"
+              req = urllib.request.Request(url, headers=headers)
+              resp = urllib.request.urlopen(req, timeout=10)
+              data = json.loads(resp.read())
+              for r in data.get("workflow_runs", []):
+                  if r.get("name") != "Daily Poster":
+                      continue
+                  d = datetime.fromisoformat(r["created_at"].replace("Z","+00:00"))
+                  if d.astimezone(sh).date() == today:
+                      found = True
+                      break
+              if found:
+                  break
+
+          with open(os.environ["GITHUB_OUTPUT"], "a") as f:
+              f.write(f"result={'skip' if found else 'trigger'}\n")
+              print(f"{'✅ 今天已有成功运行，跳过' if found else '⚠️ 今天尚未成功运行，触发主 workflow'}")
+          PYEOF
+
+      - name: Trigger main workflow
+        if: steps.check.outputs.result == 'trigger'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          curl -s -X POST \
+            -H "Authorization: token ${GH_TOKEN}" \
+            -H "Accept: application/vnd.github.v3+json" \
+            "https://api.github.com/repos/${{ github.repository }}/actions/workflows/293487209/dispatches" \
+            -d '{"ref":"main"}'
+          echo "🔔 已触发 Daily Poster workflow_dispatch"

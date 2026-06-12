@@ -2,8 +2,10 @@ name: Daily Poster
 
 on:
   schedule:
-    - cron: "0 20 * * *"
-    - cron: "0 21 * * *"
+    - cron: "0 20 * * *"   # 北京 04:00
+    - cron: "0 21 * * *"   # 北京 05:00
+    - cron: "0 22 * * *"   # 北京 06:00
+    - cron: "0 23 * * *"   # 北京 07:00
   workflow_dispatch:
 
 jobs:
