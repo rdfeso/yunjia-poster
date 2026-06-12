@@ -1,6 +1,11 @@
 name: Daily Poster
 
 on:
+  push:
+    branches:
+      - main
+    paths:
+      - ".github/workflows/daily-run.yml"
   schedule:
     - cron: "0 20 * * *"
     - cron: "0 21 * * *"
@@ -12,6 +17,10 @@ jobs:
     timeout-minutes: 25
 
     steps:
+      - name: Activation (push only)
+        if: github.event_name == 'push'
+        run: echo "Push trigger - re-registering cron schedule."
+
       - name: Check if should skip (schedule dedup)
         id: check
         env:
