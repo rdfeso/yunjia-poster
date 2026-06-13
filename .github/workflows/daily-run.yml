@@ -13,9 +13,6 @@ on:
     - cron: "0 23 * * *"   # 北京 07:00
     - cron: "30 23 * * *"  # 北京 07:30
   workflow_dispatch:
-  push:
-    paths:
-      - '.github/workflows/daily-run.yml'
 
 jobs:
   build-and-push:
