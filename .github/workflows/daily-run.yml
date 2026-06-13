@@ -7,6 +7,9 @@ on:
     - cron: "0 22 * * *"   # 北京 06:00
     - cron: "0 23 * * *"   # 北京 07:00
   workflow_dispatch:
+  push:
+    paths:
+      - '.github/workflows/daily-run.yml'
 
 jobs:
   build-and-push:
