@@ -2,10 +2,12 @@ name: Watchdog - Daily Poster Fallback
 
 on:
   schedule:
-    - cron: "30 23 * * *"   # 北京 07:30
-    - cron: "0 0 * * *"     # 北京 08:00
-    - cron: "30 0 * * *"    # 北京 08:30
+    # 5 分钟一次覆盖北京 03:00 ~ 08:00
+    - cron: "*/5 19,20,21,22,23,0 * * *"
   workflow_dispatch:
+  push:
+    paths:
+      - '.github/workflows/watchdog.yml'
 
 jobs:
   check-and-trigger:
@@ -13,49 +15,26 @@ jobs:
     timeout-minutes: 5
 
     steps:
-      - name: Check if main workflow ran today
+      - name: Check Beijing time window (only trigger between 03:00-08:00)
+        id: window
+        run: |
+          HOUR_SH=$(TZ=Asia/Shanghai date +%H)
+          echo "current Beijing hour: $HOUR_SH"
+          if [ "$HOUR_SH" -ge 3 ] && [ "$HOUR_SH" -lt 8 ]; then
+            echo "in_window=true" >> "$GITHUB_OUTPUT"
+            echo "✅ 当前北京时间 ${HOUR_SH} 点，在触发窗口 03:00-08:00 内"
+          else
+            echo "in_window=false" >> "$GITHUB_OUTPUT"
+            echo "⏭️ 当前北京时间 ${HOUR_SH} 点，不在窗口内，跳过"
+          fi
+
+      - name: Check if main workflow already ran or is running today
         id: check
+        if: steps.window.outputs.in_window == 'true'
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           REPO: ${{ github.repository }}
         run: |
-          TODAY_SH=$(TZ=Asia/Shanghai date +%Y-%m-%d)
-          echo "today=$TODAY_SH" >> "$GITHUB_OUTPUT"
-
-          # Check for ANY successful run of Daily Poster today (schedule OR dispatch)
-          API_URL="https://api.github.com/repos/${REPO}/actions/runs"
-          API_URL="${API_URL}?status=success&per_page=20&event=workflow_dispatch"
-          RESP1=$(curl -s -H "Authorization: token $GH_TOKEN" "$API_URL")
-
-          API_URL2="https://api.github.com/repos/${REPO}/actions/runs"
-          API_URL2="${API_URL2}?status=success&per_page=20&event=schedule"
-          RESP2=$(curl -s -H "Authorization: token $GH_TOKEN" "$API_URL2")
-
-          RESULT=$(echo "$RESP1$RESP2" | python3 -c "
-          import sys, json
-          from datetime import datetime, timezone, timedelta
-          data = json.load(sys.stdin) if isinstance(json.loads(sys.stdin.read() if False else '[]'), list) else []
-          sh = timezone(timedelta(hours=8))
-          today = datetime.now(sh).date()
-          # Parse combined response
-          import re
-          raw = sys.stdin.read()
-          # Try parsing as array of arrays or merged
-          found = False
-          try:
-            items = json.loads(raw)
-            if isinstance(items, list):
-              for r in items:
-                d = datetime.fromisoformat(r['created_at'].replace('Z','+00:00'))
-                if d.astimezone(sh).date() == today:
-                  found = True
-                  break
-          except:
-            pass
-          print('skip' if found else 'trigger')
-          " 2>/dev/null || echo "trigger")
-
-          # Simpler approach: use python to check both
           python3 << 'PYEOF'
           import os, json, urllib.request
           from datetime import datetime, timezone, timedelta
@@ -65,30 +44,33 @@ jobs:
           today = datetime.now(sh).date()
 
           headers = {"Authorization": f"token {token}", "Accept": "application/vnd.github.v3+json"}
-          events = ["workflow_dispatch", "schedule"]
+          # Check all recent runs of Daily Poster (any status)
+          url = f"https://api.github.com/repos/{repo}/actions/runs?per_page=30"
+          req = urllib.request.Request(url, headers=headers)
+          resp = urllib.request.urlopen(req, timeout=15)
+          data = json.loads(resp.read())
           found = False
-          for evt in events:
-              url = f"https://api.github.com/repos/{repo}/actions/runs?status=success&per_page=20&event={evt}"
-              req = urllib.request.Request(url, headers=headers)
-              resp = urllib.request.urlopen(req, timeout=10)
-              data = json.loads(resp.read())
-              for r in data.get("workflow_runs", []):
-                  if r.get("name") != "Daily Poster":
-                      continue
-                  d = datetime.fromisoformat(r["created_at"].replace("Z","+00:00"))
-                  if d.astimezone(sh).date() == today:
-                      found = True
-                      break
-              if found:
+          found_status = ""
+          for r in data.get("workflow_runs", []):
+              if r.get("name") != "Daily Poster":
+                  continue
+              d = datetime.fromisoformat(r["created_at"].replace("Z","+00:00"))
+              if d.astimezone(sh).date() == today:
+                  found = True
+                  found_status = r.get("status", "")
                   break
 
           with open(os.environ["GITHUB_OUTPUT"], "a") as f:
-              f.write(f"result={'skip' if found else 'trigger'}\n")
-              print(f"{'✅ 今天已有成功运行，跳过' if found else '⚠️ 今天尚未成功运行，触发主 workflow'}")
+              if found:
+                  f.write("result=skip\n")
+                  print(f"✅ 今天已有运行记录（状态: {found_status}），跳过")
+              else:
+                  f.write("result=trigger\n")
+                  print("⚠️ 今天尚无任何运行记录，触发主 workflow")
           PYEOF
 
       - name: Trigger main workflow
-        if: steps.check.outputs.result == 'trigger'
+        if: steps.window.outputs.in_window == 'true' && steps.check.outputs.result == 'trigger'
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
