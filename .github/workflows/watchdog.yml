@@ -9,6 +9,9 @@ on:
   push:
     paths:
       - '.github/workflows/watchdog.yml'
+  push:
+    paths:
+      - '.github/workflows/watchdog.yml'
 
 jobs:
   check-and-trigger:
