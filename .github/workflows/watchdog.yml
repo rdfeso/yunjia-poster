@@ -5,9 +5,6 @@ on:
     # 5 分钟一次覆盖北京 03:00 ~ 08:00
     - cron: "*/5 19,20,21,22,23,0 * * *"
   workflow_dispatch:
-  push:
-    paths:
-      - '.github/workflows/watchdog.yml'
 
 jobs:
   check-and-trigger:
