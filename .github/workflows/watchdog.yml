@@ -6,9 +6,6 @@ on:
     - cron: "0 0 * * *"     # 北京 08:00
     - cron: "30 0 * * *"    # 北京 08:30
   workflow_dispatch:
-  push:
-    paths:
-      - '.github/workflows/watchdog.yml'
 
 jobs:
   check-and-trigger:
