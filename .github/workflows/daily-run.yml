@@ -14,31 +14,30 @@ on:
     - cron: "30 23 * * *"  # 北京 07:30
   workflow_dispatch:
 
+concurrency:
+  group: daily-poster-${{ github.run_id }}
+  cancel-in-progress: false
+
 jobs:
   build-and-push:
     runs-on: ubuntu-latest
     timeout-minutes: 25
 
     steps:
-      - name: Check if should skip (schedule dedup)
+      - name: Check if should skip (dedup - any event)
         id: check
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           REPO: ${{ github.repository }}
-          EVENT: ${{ github.event_name }}
         run: |
           echo "skip=false" >> "$GITHUB_OUTPUT"
-          if [ "$EVENT" != "schedule" ]; then
-            echo "非 schedule 事件，不跳过"
-            exit 0
-          fi
 
           TODAY_SH=$(TZ=Asia/Shanghai date +%Y-%m-%d)
           echo "today=$TODAY_SH" >> "$GITHUB_OUTPUT"
 
-          API_URL="https://api.github.com/repos/${REPO}/actions/runs"
-          API_URL="${API_URL}?status=success&per_page=20&event=schedule"
-          RESP=$(curl -s -H "Authorization: token $GH_TOKEN" "$API_URL")
+          # 查今天所有成功 run（schedule + workflow_dispatch）
+          RESP=$(curl -s -H "Authorization: token $GH_TOKEN" \
+            "https://api.github.com/repos/${REPO}/actions/runs?status=success&per_page=20")
 
           RESULT=$(echo "$RESP" | python3 -c "
           import sys, json
@@ -47,6 +46,8 @@ jobs:
           sh = timezone(timedelta(hours=8))
           today = datetime.now(sh).date()
           for r in data.get('workflow_runs', []):
+              if r.get('name') != 'Daily Poster':
+                  continue
               d = datetime.fromisoformat(r['created_at'].replace('Z','+00:00'))
               if d.astimezone(sh).date() == today:
                   print('skip')
@@ -56,7 +57,7 @@ jobs:
 
           if [ "$RESULT" = "skip" ]; then
             echo "skip=true" >> "$GITHUB_OUTPUT"
-            echo "今天已有成功运行，跳过"
+            echo "今天已有成功运行（任意触发方式），跳过"
           else
             echo "今天尚无成功运行，继续执行"
           fi
