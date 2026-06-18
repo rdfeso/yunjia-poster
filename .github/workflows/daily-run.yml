@@ -35,9 +35,10 @@ jobs:
           TODAY_SH=$(TZ=Asia/Shanghai date +%Y-%m-%d)
           echo "today=$TODAY_SH" >> "$GITHUB_OUTPUT"
 
-          # 查今天所有成功 run（schedule + workflow_dispatch）
+          # 查今天所有 run（不限 status），排除 cancelled/failure
+          # 只要有 in_progress 或 success 就跳过，防止并发竞争导致重复推送
           RESP=$(curl -s -H "Authorization: token $GH_TOKEN" \
-            "https://api.github.com/repos/${REPO}/actions/runs?status=success&per_page=20")
+            "https://api.github.com/repos/${REPO}/actions/runs?per_page=30")
 
           RESULT=$(echo "$RESP" | python3 -c "
           import sys, json
@@ -45,11 +46,19 @@ jobs:
           data = json.load(sys.stdin)
           sh = timezone(timedelta(hours=8))
           today = datetime.now(sh).date()
+          skip_statuses = {'success', 'in_progress', 'queued', 'waiting'}
           for r in data.get('workflow_runs', []):
               if r.get('name') != 'Daily Poster':
                   continue
               d = datetime.fromisoformat(r['created_at'].replace('Z','+00:00'))
-              if d.astimezone(sh).date() == today:
+              if d.astimezone(sh).date() != today:
+                  continue
+              status = r.get('status', '')
+              conclusion = r.get('conclusion', '') or ''
+              # 跳过已取消或失败的，继续检查其他
+              if conclusion in ('cancelled', 'failure', 'skipped'):
+                  continue
+              if status in skip_statuses:
                   print('skip')
                   sys.exit()
           print('run')
@@ -57,9 +66,9 @@ jobs:
 
           if [ "$RESULT" = "skip" ]; then
             echo "skip=true" >> "$GITHUB_OUTPUT"
-            echo "今天已有成功运行（任意触发方式），跳过"
+            echo "今天已有运行中或成功的 run，跳过（防止并发重复推送）"
           else
-            echo "今天尚无成功运行，继续执行"
+            echo "今天尚无有效运行，继续执行"
           fi
 
       - name: Checkout
