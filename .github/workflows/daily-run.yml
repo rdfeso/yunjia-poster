@@ -2,16 +2,9 @@ name: Daily Poster
 
 on:
   schedule:
-    - cron: "0 19 * * *"   # 北京 03:00
-    - cron: "30 19 * * *"  # 北京 03:30
-    - cron: "0 20 * * *"   # 北京 04:00
-    - cron: "30 20 * * *"  # 北京 04:30
-    - cron: "0 21 * * *"   # 北京 05:00
-    - cron: "30 21 * * *"  # 北京 05:30
-    - cron: "0 22 * * *"   # 北京 06:00
-    - cron: "30 22 * * *"  # 北京 06:30
-    - cron: "0 23 * * *"   # 北京 07:00
-    - cron: "30 23 * * *"  # 北京 07:30
+    - cron: "30 19 * * *"  # 北京 03:30（Pipedream 03:00 主触发后的第一道保底）
+    - cron: "0 21 * * *"   # 北京 05:00（第二道保底）
+    - cron: "0 23 * * *"   # 北京 07:00（最后兜底）
   workflow_dispatch:
 
 concurrency:
@@ -29,33 +22,37 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           REPO: ${{ github.repository }}
+          CURRENT_RUN_ID: ${{ github.run_id }}
         run: |
           echo "skip=false" >> "$GITHUB_OUTPUT"
 
           TODAY_SH=$(TZ=Asia/Shanghai date +%Y-%m-%d)
           echo "today=$TODAY_SH" >> "$GITHUB_OUTPUT"
 
-          # 查今天所有 run（不限 status），排除 cancelled/failure
-          # 只要有 in_progress 或 success 就跳过，防止并发竞争导致重复推送
+          # 查今天所有 run（不限 status），排除 cancelled/failure/skipped
+          # 排除自身 run_id，避免把自己的 in_progress 误判为"已有运行"
+          # 只要有其他 in_progress 或 success 就跳过，防止并发重复推送
           RESP=$(curl -s -H "Authorization: token $GH_TOKEN" \
             "https://api.github.com/repos/${REPO}/actions/runs?per_page=30")
 
           RESULT=$(echo "$RESP" | python3 -c "
-          import sys, json
+          import sys, json, os
           from datetime import datetime, timezone, timedelta
           data = json.load(sys.stdin)
           sh = timezone(timedelta(hours=8))
           today = datetime.now(sh).date()
+          current_run_id = int(os.environ.get('CURRENT_RUN_ID', '0'))
           skip_statuses = {'success', 'in_progress', 'queued', 'waiting'}
           for r in data.get('workflow_runs', []):
               if r.get('name') != 'Daily Poster':
                   continue
+              if r.get('id') == current_run_id:
+                  continue  # 跳过自身，避免自我误判
               d = datetime.fromisoformat(r['created_at'].replace('Z','+00:00'))
               if d.astimezone(sh).date() != today:
                   continue
               status = r.get('status', '')
               conclusion = r.get('conclusion', '') or ''
-              # 跳过已取消或失败的，继续检查其他
               if conclusion in ('cancelled', 'failure', 'skipped'):
                   continue
               if status in skip_statuses:
@@ -66,7 +63,7 @@ jobs:
 
           if [ "$RESULT" = "skip" ]; then
             echo "skip=true" >> "$GITHUB_OUTPUT"
-            echo "今天已有运行中或成功的 run，跳过（防止并发重复推送）"
+            echo "今天已有其他运行中或成功的 run，跳过（防止并发重复推送）"
           else
             echo "今天尚无有效运行，继续执行"
           fi
