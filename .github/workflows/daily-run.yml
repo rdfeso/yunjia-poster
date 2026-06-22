@@ -42,7 +42,6 @@ jobs:
           sh = timezone(timedelta(hours=8))
           today = datetime.now(sh).date()
           current_run_id = int(os.environ.get('CURRENT_RUN_ID', '0'))
-          skip_statuses = {'success', 'in_progress', 'queued', 'waiting'}
           for r in data.get('workflow_runs', []):
               if r.get('name') != 'Daily Poster':
                   continue
@@ -55,7 +54,11 @@ jobs:
               conclusion = r.get('conclusion', '') or ''
               if conclusion in ('cancelled', 'failure', 'skipped'):
                   continue
-              if status in skip_statuses:
+              # 去重：有其他正在运行或已成功的 run 就跳过
+              if status in ('in_progress', 'queued', 'waiting'):
+                  print('skip')
+                  sys.exit()
+              if conclusion == 'success':
                   print('skip')
                   sys.exit()
           print('run')
