@@ -413,13 +413,19 @@ def select_articles(
         a["_score"] = _score_article(a.get("title", ""), a.get("summary", ""))
     candidates.sort(key=lambda x: x["_score"], reverse=True)
 
-    # 最低分数线：得分 ≤ -3 的直接淘汰（政论/空话/低质文章）
-    _MIN_SCORE = -5
+    # 最低分数线：先按 ≥0 筛选，高分不足再放宽到 ≥-3
+    # （得分≤-3 的文章通常是软文/空话/无实质内容）
+    _MIN_SCORE = 0
     before_filter = len(candidates)
-    candidates = [c for c in candidates if c["_score"] > _MIN_SCORE]
+    _filtered = [c for c in candidates if c["_score"] >= _MIN_SCORE]
+    if len(_filtered) < target:
+        print(f"  [选稿] 高分(≥{_MIN_SCORE})文章不足({len(_filtered)}条)，放宽到≥-3")
+        _MIN_SCORE = -3
+        _filtered = [c for c in candidates if c["_score"] >= _MIN_SCORE]
+    candidates = _filtered
     filtered_count = before_filter - len(candidates)
     if filtered_count:
-        print(f"  [选稿] 淘汰低分文章 {filtered_count} 条 (得分≤{_MIN_SCORE})")
+        print(f"  [选稿] 淘汰低分文章 {filtered_count} 条 (得分<{_MIN_SCORE})")
 
     if not candidates:
         return []
@@ -433,7 +439,13 @@ def select_articles(
         )
 
     selected: list[dict] = []
+    _source_counts: dict[str, int] = {}
+    _MAX_PER_SOURCE = 3  # 每个来源最多选3条
     for c in candidates:
+        # 来源多样性：同一来源最多选 _MAX_PER_SOURCE 条
+        _src = c.get("source", "unknown")
+        if _source_counts.get(_src, 0) >= _MAX_PER_SOURCE:
+            continue
         title = c.get("title", "")
         too_similar = False
         for used in used_titles:
@@ -444,6 +456,7 @@ def select_articles(
             continue
         selected.append(c)
         used_titles.append(title)
+        _source_counts[_src] = _source_counts.get(_src, 0) + 1
         if len(selected) >= target:
             break
     return selected[:target]
@@ -853,20 +866,18 @@ def _ai_summarize_one(title: str, text: str, limit: int, api_key: str) -> str:
     import requests as req
 
     prompt = (
-        "你是一位为律师事务所资讯海报服务的新闻编辑。请为以下新闻写一条摘要。\n"
-        f"摘要至少50字、严格不超过{limit}字（超出会被截断，导致语句不完整）。"
-        "必须有实质信息量：包含事件结果、法律要点、处罚金额、涉及人数等关键细节。\n"
-        "禁止事项（出现即不合格）：\n"
-        '1. 禁止以"据介绍""相关负责人表示""近年来"等套话开头\n'
-        "2. 禁止整句照搬标题，必须补充标题之外的新信息\n"
-        '3. 禁止只说"持续推进""有序开展"等无实质内容的空话\n'
-        "4. 必须包含至少一个具体事实（地名、金额、时间、数据、法律条款）\n"
-        "5. 禁止使用省略号（…）截断——摘要必须以完整句号结尾\n"
-        f"6. 输出前自检：摘要字数不超过{limit}字——宁可短一点，不要超长被切\n"
-        "\n"
-        f"标题：{title}\n"
-        f"内容：{text}\n\n"
-        "请直接输出摘要正文，不要加序号、不要加任何前缀或说明。"
+        '你是云嘉律师事务所每日资讯海报的新闻编辑。请为以下新闻写一条摘要。\n'
+        f'摘要严格不超过{limit}字，结尾必须是完整句号（禁止用省略号截断）。\n'
+        '必须有实质信息量：\n'
+        '· 法律相关性优先：涉及法院、检察院、仲裁、监管、合规、诉讼、合同、劳动、消费者权益的内容，必须点明法律要点\n'
+        '· 包含关键细节：事件结果、处罚金额、涉及人数、生效时间、具体数据等\n'
+        '· 禁止套话开头（"据介绍""相关负责人表示""近年来"等）\n'
+        '· 禁止照搬标题，必须补充标题之外的新信息\n'
+        '· 禁止空话（"持续推进""有序开展""取得成效"等无实质内容）\n'
+        f'· 输出前自检字数，摘要不超过{limit}字——宁可短也要完整\n\n'
+        f'标题：{title}\n'
+        f'内容：{text}\n\n'
+        '请直接输出摘要正文，不要加序号、不要加任何前缀或说明。'
     )
 
     try:
