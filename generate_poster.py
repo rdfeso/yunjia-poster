@@ -171,25 +171,55 @@ def summarize(raw: str, title: str = "", limit: int = 80) -> str:
             return truncate(title, limit)
         return ""
 
-    # 优先取第一个完整句子
-    sentences = re.split(r"(?<=。)", text)
+    # 改进：不选第一句，而是给所有句子打分，选信息量最高的1-2句
+    import re as _re
+    sents = [s.strip() for s in _re.split(r"(?<=[。！？])", text) if s.strip()]
+
+    def _score_sent(s: str) -> int:
+        sc = 0
+        # 包含数字/金额/百分比 → 高信息量
+        if _re.search(r"\d+[万余亿千佰拾%\.\d]|第\d+|[0-9]", s):
+            sc += 4
+        # 包含法律关键词
+        if any(kw in s for kw in ["法院", "判决", "检察", "起诉", "处罚", "违法", "赔偿", "仲裁", "诉讼", "违法", "合规"]):
+            sc += 3
+        # 包含地名（2-4个中文字符 + 省/市/区/县/镇）
+        if _re.search(r"[\u4e00-\u9fff]{2,4}[省市区县镇村]", s):
+            sc += 2
+        # 句子长度适中（15-80字）得分高，太短没信息，太长可能是废话
+        L = len(s)
+        if 15 <= L <= 80:
+            sc += 2
+        elif L < 10:
+            sc -= 3
+        # 包含动词（判决、逮捕、通报、查处、起诉）→ 有实质动作
+        if any(vb in s for vb in ["判决", "逮捕", "通报", "查处", "起诉", "责令", "罚款", "拘留", "冻结", "查封"]):
+            sc += 2
+        return sc
+
+    scored = [(s, _score_sent(s)) for s in sents if len(s) >= 8]
+    scored.sort(key=lambda x: x[1], reverse=True)
+
+    # 选前1-2句，总字数不超过 limit
     summary_parts = []
-    total_len = 0
-    for sent in sentences:
-        sent = sent.strip()
-        if not sent:
-            continue
-        if total_len + len(sent) <= limit:
-            summary_parts.append(sent)
-            total_len += len(sent)
-        else:
+    total = 0
+    for s, sc in scored:
+        if total + len(s) <= limit:
+            summary_parts.append(s)
+            total += len(s)
+        if len(summary_parts) >= 2:
             break
     if summary_parts:
         candidate = "".join(summary_parts)
-        if len(candidate) <= limit:
-            return candidate
+        if len(candidate) >= 20:
+            return candidate[:limit]
 
-    # 没有完整句子或超长，直接截断
+    # 所有句子都不行，降级：取最长且有数字的句子
+    for s in sorted(sents, key=len, reverse=True):
+        if len(s) >= 20 and total + len(s) <= limit:
+            return s[:limit]
+
+    # 彻底失败：返回清洗后文本的前 limit 字
     return truncate(text, limit)
 
 
