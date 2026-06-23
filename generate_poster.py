@@ -1293,7 +1293,10 @@ def main() -> None:
                 fallback_count = 0
                 for a in articles:
                     if not a.get("_ai_summary"):
-                        raw = a.get("raw_content", "") or a.get("raw_summary", "") or a.get("summary", "")
+                        raw = (a.get("raw_content", "")
+                              or a.get("_feed_text", "")
+                              or a.get("raw_summary", "")
+                              or a.get("summary", ""))
                         improved = summarize(raw=raw, title=a.get("title", ""), limit=65)
                         if improved and len(improved) >= 40:
                             a["summary"] = improved
