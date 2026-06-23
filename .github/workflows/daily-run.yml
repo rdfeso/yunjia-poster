@@ -41,6 +41,8 @@ jobs:
           data = json.load(sys.stdin)
           sh = timezone(timedelta(hours=8))
           today = datetime.now(sh).date()
+          now_sh = datetime.now(sh)
+          cutoff = now_sh - timedelta(hours=6)  # 过去6小时也纳入去重（防止 UTC 跨天相邻重复）
           current_run_id = int(os.environ.get('CURRENT_RUN_ID', '0'))
           for r in data.get('workflow_runs', []):
               if r.get('name') != 'Daily Poster':
@@ -48,7 +50,9 @@ jobs:
               if r.get('id') == current_run_id:
                   continue  # 跳过自身，避免自我误判
               d = datetime.fromisoformat(r['created_at'].replace('Z','+00:00'))
-              if d.astimezone(sh).date() != today:
+              d_sh = d.astimezone(sh)
+              # 只看今天 或 过去6小时内，防止 UTC 跨天时相邻 run 被分到不同日期
+              if d_sh.date() != today and d_sh < cutoff:
                   continue
               status = r.get('status', '')
               conclusion = r.get('conclusion', '') or ''
