@@ -13,6 +13,7 @@ import re
 import sys
 import urllib.request
 import xml.etree.ElementTree as ET
+from html.parser import HTMLParser
 from pathlib import Path
 
 import requests
@@ -245,7 +246,8 @@ def _score_article(title: str, summary: str) -> int:
             break
     # 娱乐/八卦内容降权（不适合律所资讯海报）
     _ENTERTAINMENT_KW = ["综艺", "明星", "娱乐", "网红", "真人秀", "亲子综艺", "电视剧", "电影",
-                         "票房", "夺冠", "首金", "开幕式", "闭幕式", "颁奖典礼"]
+                         "票房", "夺冠", "首金", "开幕式", "闭幕式", "颁奖典礼", "编剧", "豆瓣",
+                         "韩剧", "饭圈", "追星", "偶像剧", "综艺节目", "钟美美"]
     for w in _ENTERTAINMENT_KW:
         if w in title:
             score -= 10
@@ -253,7 +255,8 @@ def _score_article(title: str, summary: str) -> int:
     # 软新闻/正能量宣传降权（无实质新闻价值）
     _SOFT_NEWS_KW = ["点赞", "研修班", "体验", "喜讯", "佳话", "暖心", "感动", "成功举办",
                      "圆满落幕", "顺利举行", "幸福感", "获得感", "安全感", "蓬勃发展",
-                     "谱写新篇", "昂扬奋进", "砥砺前行", "致敬", "感恩", "加油"]
+                     "谱写新篇", "昂扬奋进", "砥砺前行", "致敬", "感恩", "加油",
+                     "涂层剥落", "倒影池", "纪念堂", "世界之最", "奇闻"]
     for w in _SOFT_NEWS_KW:
         if w in title:
             score -= 5
@@ -473,6 +476,203 @@ def select_articles(
 
 
 # ---------------------------------------------------------------------------
+# 网页源抓取（门户新闻首页）
+# ---------------------------------------------------------------------------
+
+class _WebLinkExtractor(HTMLParser):
+    """从 HTML 中提取 <a> 标签的文本和 href。"""
+
+    def __init__(self):
+        super().__init__()
+        self.links: list[tuple[str, str]] = []
+        self._current_href: str | None = None
+        self._current_text: list[str] = []
+
+    def handle_starttag(self, tag: str, attrs: list[tuple[str, str | None]]) -> None:
+        if tag == "a":
+            attr_dict = {k: v for k, v in attrs}
+            self._current_href = attr_dict.get("href", "")
+            self._current_text = []
+
+    def handle_endtag(self, tag: str) -> None:
+        if tag == "a" and self._current_href:
+            text = "".join(self._current_text).strip()
+            if text:
+                self.links.append((self._current_href, text))
+            self._current_href = None
+            self._current_text = []
+
+    def handle_data(self, data: str) -> None:
+        if self._current_href is not None:
+            self._current_text.append(data)
+
+
+def _normalize_web_url(url: str, base_url: str) -> str:
+    """补全相对路径并去掉常见跟踪参数。"""
+    from urllib.parse import urljoin, urlparse, urlunparse, parse_qsl, urlencode
+
+    if not url:
+        return ""
+    # 协议相对路径
+    if url.startswith("//"):
+        url = "https:" + url
+    elif url.startswith("/") or not url.startswith("http"):
+        url = urljoin(base_url, url)
+
+    # 去掉常见跟踪参数（保留必要查询参数）
+    parsed = urlparse(url)
+    keep = {"id", "docid", "aid", "article_id"}
+    query_params = parse_qsl(parsed.query)
+    query = [(k, v) for k, v in query_params if k.lower() in keep]
+    query_str = urlencode(query) if query else ""
+    url = urlunparse((parsed.scheme, parsed.netloc, parsed.path, parsed.params, query_str, parsed.fragment))
+    return url
+
+
+# 不同门户的新闻详情页 URL 特征（满足任一即视为新闻）
+_WEB_NEWS_URL_PATTERNS = [
+    r"\.shtml$",
+    r"\.html$",
+    r"/article/\w+",
+    r"/a/\d+_\d+",
+    r"/a/\d+\?",
+    r"/doc-[a-z0-9]+\.shtml",
+    r"/detail-[a-z0-9_]+\.d",
+    r"/news/article/\w+",
+]
+
+# 明显非新闻路径/域名，直接排除
+_WEB_SKIP_URL_PATTERNS = [
+    r"/search[/?]",
+    r"/login[/?]",
+    r"/register[/?]",
+    r"/video[/?]",
+    r"/photo[/?]",
+    r"/slide[/?]",
+    r"/album[/?]",
+    r"/promotion[/?]",
+    r"/track[/?]",
+    r"track\.sohu\.com",
+    r"s\.weibo\.com",
+    r"open\.163\.com",
+    r"/special[/?]",
+    r"/gov[/?]",
+    r"/zx[/?]",
+    r"/data[/?]",
+    r"/dy[/?]",  # 网易自媒体号
+    r"/caozhi[/?]",  # 网易槽值
+    r"/renjian[/?]",  # 网易人间
+    r"/jiankang[/?]",  # 网易健康
+]
+
+
+def _is_news_url(url: str) -> bool:
+    """判断 URL 是否像新闻详情页。"""
+    if not url or not url.startswith("http"):
+        return False
+    for p in _WEB_SKIP_URL_PATTERNS:
+        if re.search(p, url, re.I):
+            return False
+    return any(re.search(p, url, re.I) for p in _WEB_NEWS_URL_PATTERNS)
+
+
+# 标题过滤：排除明显非新闻、导航、广告、娱乐八卦、政治评论号
+_WEB_INVALID_TITLE_PATTERNS = [
+    "点击查看", "查看更多", "更多推荐", "更多新闻", "登录", "注册", "下载",
+    "订阅", "关注", "专题", "首页", "频道", "导航", "搜索", "返回", "顶部",
+    "评论", "分享", "收藏", "举报", "我来说两句", "点击下载", "APP",
+    "豆瓣", "小红书", "抖音", "快手", "饭圈", "追星", "偶像剧", "钧正平",
+]
+
+
+def _is_valid_news_title(title: str) -> bool:
+    if not title:
+        return False
+    title = title.strip()
+    if len(title) < 10 or len(title) > 80:
+        return False
+    if any(w in title for w in _WEB_INVALID_TITLE_PATTERNS):
+        return False
+    return True
+
+
+def _classify_by_title(title: str, default_scope: str, default_category: str) -> tuple[str, str]:
+    """根据标题关键词自动识别国内/国际。"""
+    intl_keywords = [
+        "国际", "美国", "俄罗斯", "乌克兰", "以色列", "伊朗", "朝鲜", "韩国",
+        "日本", "欧盟", "北约", "中东", "亚太", "非盟", "拉美", "越南", "印度",
+        "巴以", "俄乌", "美以", "特朗普", "拜登", "普京", "泽连斯基", "内塔尼亚胡",
+    ]
+    if any(k in title for k in intl_keywords):
+        return "international", "国际"
+    return default_scope, default_category
+
+
+def fetch_web_source(source: dict, timeout: int = 10) -> list[dict]:
+    """抓取一个门户首页，返回新闻候选列表。
+
+    只抓取标题和链接，正文由后续 _enrich_article_content 从 URL 补充。
+    """
+    import requests as req
+
+    base_url = source["url"]
+    resp = req.get(base_url, headers={"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)"}, timeout=timeout)
+    resp.encoding = resp.apparent_encoding or "utf-8"
+    html = resp.text
+
+    extractor = _WebLinkExtractor()
+    extractor.feed(html)
+
+    articles = []
+    seen = set()
+    default_scope = source.get("scope", "domestic")
+    default_category = source.get("category", "综合资讯")
+    source_name = source.get("name", "网络")
+    limit = source.get("limit", 20)
+
+    for href, title in extractor.links:
+        href = _normalize_web_url(href, base_url)
+        if not _is_news_url(href):
+            continue
+        if not _is_valid_news_title(title):
+            continue
+        if title in seen:
+            continue
+        seen.add(title)
+
+        clean_title = strip_tags(title)
+        clean_title = re.sub(r"\s+", " ", clean_title)
+
+        scope, category = _classify_by_title(clean_title, default_scope, default_category)
+        articles.append({
+            "scope": scope,
+            "category": category,
+            "source": source_name,
+            "title": truncate(clean_title, 36),
+            "raw_content": "",  # 由 _enrich_article_content 从 URL 补充
+            "summary": "",
+            "url": href,
+        })
+        if len(articles) >= limit:
+            break
+    return articles
+
+
+def fetch_web_sources(config: dict, timeout: int = 10) -> tuple[list[dict], list[str]]:
+    """抓取所有网页源。"""
+    all_articles: list[dict] = []
+    errors: list[str] = []
+    for source in config.get("web_sources", []):
+        try:
+            arts = fetch_web_source(source, timeout=timeout)
+            all_articles.extend(arts)
+            print(f"  [网页抓取] {source.get('name', '未知')} 抓到 {len(arts)} 条")
+        except Exception as exc:
+            errors.append(f'{source.get("name", "未知网页源")}: {exc}')
+    return all_articles, errors
+
+
+# ---------------------------------------------------------------------------
 # RSS 抓取
 # ---------------------------------------------------------------------------
 
@@ -539,16 +739,23 @@ def fetch_articles(
     output_dir: Path | None = None,
     poster_date: dt.date | None = None,
 ) -> tuple[list[dict], list[str]]:
-    """抓取所有RSS源，按优先级评分后选出目标数量文章。"""
+    """抓取所有源（RSS + 网页），按优先级评分后选出目标数量文章。"""
     all_articles: list[dict] = []
     errors: list[str] = []
+
+    # 1. RSS 源
     for source in config.get("sources", []):
         try:
             all_articles.extend(fetch_feed(source))
         except Exception as exc:
             errors.append(f'{source.get("name", "未知来源")}: {exc}')
 
-    # 去重：同一标题只保留第一条（不同频道可能抓到相同文章）
+    # 2. 网页源（门户首页）
+    web_articles, web_errors = fetch_web_sources(config)
+    all_articles.extend(web_articles)
+    errors.extend(web_errors)
+
+    # 去重：同一标题只保留第一条（不同来源可能抓到相同文章）
     seen: set[str] = set()
     deduped: list[dict] = []
     for a in all_articles:
@@ -815,9 +1022,11 @@ def _enrich_article_content(article: dict) -> str:
 
     text = raw if raw else title
 
-    # 判断是否不足：字数不够或与标题高度重复
+    # 判断是否不足：字数不够、与标题高度重复、或 raw 为空
     need_fetch = False
-    if len(text) < 30:
+    if not raw and url:
+        need_fetch = True
+    elif len(text) < 30:
         need_fetch = True
     elif len(text) < 60:
         common = sum(1 for c in text if c in title)
