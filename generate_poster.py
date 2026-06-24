@@ -1073,37 +1073,105 @@ def _enrich_article_content(article: dict) -> str:
         resp.encoding = resp.apparent_encoding or "utf-8"
         html = resp.text
 
-        # 去掉 script/style/标签/HTML实体
-        html = re.sub(r"<script[^>]*>.*?</script>", "", html, flags=re.S)
-        html = re.sub(r"<style[^>]*>.*?</style>", "", html, flags=re.S)
-        html = re.sub(r"<[^>]+>", "", html)
-        html = re.sub(r"&[a-z]+;", " ", html)
+        # 优先按网站特性提取正文区块，再清标签（比全页清标签准确得多）
+        content_html = ""
 
-        # 提取行，跳过导航垃圾（短行、单字符、常见导航词）
+        # 搜狐文章：<article> 标签
+        if "sohu.com/a/" in url:
+            m = re.search(r"<article[^>]*>(.*?)</article>", html, re.S)
+            if m:
+                content_html = m.group(1)
+
+        # 网易文章：<div class="post_text"> 或 <div id="articleContent">
+        if not content_html and ("163.com" in url):
+            m = re.search(r'<div class="post_text[^"]*">(.*?)</div>\s*<div', html, re.S)
+            if not m:
+                m = re.search(r'<div id="articleContent">(.*?)</div>\s*(?:<div|<script)', html, re.S)
+            if m:
+                content_html = m.group(1)
+
+        # 新浪新闻：<div class="article-content"> 或 <div id="artibody">
+        if not content_html and ("sina.com.cn" in url):
+            m = re.search(r'<div class="article-content[^"]*">(.*?)</div>\s*(?:<div|<script)', html, re.S)
+            if not m:
+                m = re.search(r'<div id="artibody">(.*?)</div>\s*(?:<div|<script)', html, re.S)
+            if m:
+                content_html = m.group(1)
+
+        # 中新网 RSS 原文：<div id="content"> 或 <div class="content">
+        if not content_html and ("chinanews.com.cn" in url or "chinanews.com" in url):
+            m = re.search(r'<div id="content">(.*?)</div>\s*(?:<div|<script|<!--)', html, re.S)
+            if not m:
+                m = re.search(r'<div class="content[^"]*">(.*?)</div>\s*(?:<div|<script)', html, re.S)
+            if m:
+                content_html = m.group(1)
+
+        # 通用回退：找最长的 <p> 标签密集区域（正文段落通常连续出现）
+        if not content_html:
+            # 找所有 <p> 标签，取连续最多的那块前后扩展
+            ps = list(re.finditer(r"<p[^>]*>(.*?)</p>", html, re.S))
+            if len(ps) >= 3:
+                # 找连续 <p> 最多的区域
+                best_start = 0
+                best_count = 0
+                cur_start = 0
+                cur_count = 1
+                for i in range(1, len(ps)):
+                    if ps[i].start() - ps[i-1].end() < 500:  # 两个 p 标签相距 <500 字符认为是同一区域
+                        cur_count += 1
+                    else:
+                        if cur_count > best_count:
+                            best_count = cur_count
+                            best_start = cur_start
+                        cur_start = i
+                        cur_count = 1
+                if cur_count > best_count:
+                    best_count = cur_count
+                    best_start = cur_start
+                # 取最佳区域前后各扩展 1 个 p
+                idx_start = max(0, best_start - 1)
+                idx_end = min(len(ps), best_start + best_count + 1)
+                content_html = "".join(ps[j].group(0) for j in range(idx_start, idx_end))
+
+        # 从提取的正文区块中清标签
+        if content_html:
+            body = re.sub(r"<script[^>]*>.*?</script>", "", content_html, flags=re.S)
+            body = re.sub(r"<style[^>]*>.*?</style>", "", body, flags=re.S)
+            body = re.sub(r"<[^>]+>", " ", body)
+            body = re.sub(r"&[a-z]+;", " ", body)
+            body = re.sub(r"\s+", " ", body).strip()
+
+            # 取前 800 字
+            if len(body) > 800:
+                body = body[:800]
+            if len(body) > len(text) + 20:
+                return f"{title}\n{body}"
+
+        # 以上都失败，降级到旧的全页清标签方案
+        html2 = re.sub(r"<script[^>]*>.*?</script>", "", html, flags=re.S)
+        html2 = re.sub(r"<style[^>]*>.*?</style>", "", html2, flags=re.S)
+        html2 = re.sub(r"<[^>]+>", "", html2)
+        html2 = re.sub(r"&[a-z]+;", " ", html2)
         _NAV_GARBAGE = {"首页", "新闻", "财经", "法治", "社会", "生活", "关于", "登录", "注册",
                         "导航", "搜索", "菜单", "返回", "顶部", "版权", "声明", "广告"}
         lines = []
-        for l in html.split("\n"):
+        for l in html2.split("\n"):
             s = l.strip()
             if not s or len(s) < 4 or s in _NAV_GARBAGE:
                 continue
             lines.append(s)
-
-        body = "\n".join(lines)
-
-        # 定位正文起点：跳到第一个 ≥40 字符的段落（导航通常短，正文段落长）
-        start = 0
-        for i, line in enumerate(lines):
-            if len(line) >= 40:
-                start = i
-                break
-        body = "\n".join(lines[start:])
-
-        # 取前 800 字
-        if len(body) > 800:
-            body = body[:800]
-        if len(body) > len(text) + 20:
-            return f"{title}\n{body}"
+        if lines:
+            # 定位正文起点
+            start = 0
+            for i, line in enumerate(lines):
+                if len(line) >= 30:
+                    start = i
+                    break
+            body = "\n".join(lines[start:])
+            if len(body) > 800:
+                body = body[:800]
+            if len(body) > len(text) + 20:
+                return f"{title}\n{body}"
     except Exception:
         pass
 
@@ -1327,8 +1395,10 @@ def main() -> None:
                               or a.get("_feed_text", "")
                               or a.get("raw_summary", "")
                               or a.get("summary", ""))
+                        if not raw:
+                            print(f"  [摘要调试] 空raw: {a.get('title','')[:30]}")
                         improved = summarize(raw=raw, title=a.get("title", ""), limit=65)
-                        if improved and len(improved) >= 40:
+                        if improved and len(improved) >= 20:
                             a["summary"] = improved
                             fallback_count += 1
                 if fallback_count:
