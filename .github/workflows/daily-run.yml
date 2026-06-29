@@ -6,6 +6,11 @@ on:
     - cron: "0 21 * * *"   # 北京 05:00（第二道保底）
     - cron: "0 23 * * *"   # 北京 07:00（最后兜底）
   workflow_dispatch:
+    inputs:
+      force:
+        description: "Force run (skip dedup check)"
+        required: false
+        default: "false"
 
 concurrency:
   group: daily-poster-${{ github.run_id }}
@@ -24,6 +29,13 @@ jobs:
           REPO: ${{ github.repository }}
           CURRENT_RUN_ID: ${{ github.run_id }}
         run: |
+          # force 模式直接跳过去重
+          if [ "${{ github.event.inputs.force }}" = "true" ]; then
+            echo "skip=false" >> "$GITHUB_OUTPUT"
+            echo "Force mode: skipping dedup check"
+            exit 0
+          fi
+
           echo "skip=false" >> "$GITHUB_OUTPUT"
 
           TODAY_SH=$(TZ=Asia/Shanghai date +%Y-%m-%d)
