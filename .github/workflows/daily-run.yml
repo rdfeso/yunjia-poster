@@ -36,14 +36,34 @@ jobs:
             "https://api.github.com/repos/${REPO}/actions/runs?per_page=30")
 
           RESULT=$(echo "$RESP" | python3 -c "
-          import sys, json, os
+          import sys, json, os, urllib.request
           from datetime import datetime, timezone, timedelta
           data = json.load(sys.stdin)
           sh = timezone(timedelta(hours=8))
           today = datetime.now(sh).date()
           now_sh = datetime.now(sh)
-          cutoff = now_sh - timedelta(hours=6)  # 过去6小时也纳入去重（防止 UTC 跨天相邻重复）
+          cutoff = now_sh - timedelta(hours=2)  # 缩减到2小时（防止昨天晚间 run 误杀今天凌晨触发）
           current_run_id = int(os.environ.get('CURRENT_RUN_ID', '0'))
+          repo = os.environ.get('REPO', '')
+          gh_token = os.environ.get('GH_TOKEN', '')
+
+          def run_has_real_work(run_id):
+              '''检查 run 是否真正执行了 Step 2（而非全部 skipped）'''
+              try:
+                  req = urllib.request.Request(
+                      f'https://api.github.com/repos/{repo}/actions/runs/{run_id}/jobs',
+                      headers={'Authorization': f'token {gh_token}', 'Accept': 'application/vnd.github.v3+json'}
+                  )
+                  with urllib.request.urlopen(req, timeout=10) as resp:
+                      jobs = json.loads(resp.read().decode())
+                  for job in jobs.get('jobs', []):
+                      for step in job.get('steps', []):
+                          if 'Step 2' in step.get('name', '') and step.get('conclusion') == 'success':
+                              return True
+                  return False
+              except Exception:
+                  return True  # 查不到时保守处理，认为有实际工作
+
           for r in data.get('workflow_runs', []):
               if r.get('name') != 'Daily Poster':
                   continue
@@ -51,20 +71,23 @@ jobs:
                   continue  # 跳过自身，避免自我误判
               d = datetime.fromisoformat(r['created_at'].replace('Z','+00:00'))
               d_sh = d.astimezone(sh)
-              # 只看今天 或 过去6小时内，防止 UTC 跨天时相邻 run 被分到不同日期
+              # 只看今天 或 过去2小时内（防止 UTC 跨天时相邻 run 被分到不同日期）
               if d_sh.date() != today and d_sh < cutoff:
                   continue
               status = r.get('status', '')
               conclusion = r.get('conclusion', '') or ''
               if conclusion in ('cancelled', 'failure', 'skipped'):
                   continue
-              # 去重：有其他正在运行或已成功的 run 就跳过
+              # 去重：有其他正在运行的就跳过（防止并发重复推送）
               if status in ('in_progress', 'queued', 'waiting'):
                   print('skip')
                   sys.exit()
               if conclusion == 'success':
-                  print('skip')
-                  sys.exit()
+                  # 关键修复：检查是否真正执行了 Step 2，跳过空 run
+                  if run_has_real_work(r['id']):
+                      print('skip')
+                      sys.exit()
+                  # 如果是全部 skipped 的空 run，不阻止当前 run
           print('run')
           ")
 
