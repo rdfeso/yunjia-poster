@@ -110,6 +110,10 @@ def summarize(raw: str, title: str = "", limit: int = 80) -> str:
             return truncate(t, limit)
         return ""
 
+    # 0. 如果原始内容就是垃圾（版权声明、时间戳列表、标题重复等），直接放弃
+    if _is_garbage_content(text, title):
+        return ""
+
     # 1. 去电头
     text = re.sub(
         r"^(新华社|中新网|中新社|人民网|央视新闻|央广网|经济日报|光明日报|"
@@ -257,6 +261,10 @@ def _score_article(title: str, summary: str) -> int:
     """对文章打分，分数越高越优先选中。"""
     text = title + summary
     score = 0
+
+    # 空摘要或垃圾摘要直接判负分，优先被 fallback 替换
+    if not _has_valid_summary(summary, title):
+        score -= 50
     for kw in _PRIORITY_KEYWORDS:
         if kw in text:
             score += 1
@@ -1040,6 +1048,64 @@ def send_to_feishu(config: dict, png_path: Path, poster_date: dt.date) -> bool:
 # AI 摘要 (DeepSeek)
 # ---------------------------------------------------------------------------
 
+def _has_valid_summary(summary: str, title: str = "") -> bool:
+    """判断摘要是否有效（非空、非垃圾、非单纯标题重复）。"""
+    if not summary:
+        return False
+    s = summary.strip()
+    if len(s) < 15:
+        return False
+    if _is_garbage_content(s, title):
+        return False
+    # 摘要只是标题的重复/截取，没有新增信息
+    if title and (s == title or title in s or s in title):
+        return False
+    return True
+
+
+def _is_garbage_content(text: str, title: str = "") -> bool:
+    """判断提取到的内容是否是垃圾/无效内容。
+
+    常见垃圾模式：
+    - 版权声明
+    - 大量时间戳+作者名组合（如评论区/推荐列表）
+    - 标题重复多次
+    - 几乎没有中文字符
+    """
+    if not text:
+        return True
+
+    # 1. 版权声明
+    if re.search(r"Copyright|All Rights Reserved|版权所有|新浪公司|搜狐新闻", text, re.I):
+        return True
+
+    # 2. 标题重复多次（重复3次以上视为垃圾）
+    if title and text.count(title) >= 3:
+        return True
+
+    # 3. 大量时间戳+作者名组合（一行一个时间戳）
+    # 如 "凉了时光人 2026-06-25 03:15:32" 这种格式
+    timestamp_author_patterns = re.findall(
+        r"[\u4e00-\u9fff]{2,8}\s+\d{4}[-./]\d{1,2}[-./]\d{1,2}\s+\d{1,2}:\d{2}(:\d{2})?",
+        text
+    )
+    if len(timestamp_author_patterns) >= 5:
+        return True
+
+    # 4. 有效中文字符比例过低（<30%）
+    cn_chars = len(re.findall(r"[\u4e00-\u9fff]", text))
+    total_chars = len(text.replace(" ", ""))
+    if total_chars > 20 and cn_chars / total_chars < 0.3:
+        return True
+
+    # 5. 内容几乎全是发布信息（发布于、文章数等）
+    pub_meta_patterns = re.findall(r"发布于|文章\s*\d+|Copyright|SINA|SOHU|All Rights", text, re.I)
+    if len(pub_meta_patterns) >= 3 and cn_chars < 100:
+        return True
+
+    return False
+
+
 def _enrich_article_content(article: dict) -> str:
     """当 RSS 摘要不足时，尝试从原文 URL 获取完整内容。
 
@@ -1055,18 +1121,26 @@ def _enrich_article_content(article: dict) -> str:
 
     text = raw if raw else title
 
-    # 判断是否不足：字数不够、与标题高度重复、或 raw 为空
+    # 判断是否不足：字数不够、段落太少、与标题高度重复、或 raw 为空
     need_fetch = False
+    para_count = len([p for p in re.split(r"[。！？\n]", text) if len(p.strip()) > 10])
     if not raw and url:
         need_fetch = True
-    elif len(text) < 30:
+    elif len(text) < 80:
         need_fetch = True
-    elif len(text) < 60:
+    elif para_count < 2:
+        # 只有一段（通常是电头导语），正文大概率不完整
+        need_fetch = True
+    elif len(text) < 150:
         common = sum(1 for c in text if c in title)
-        if common > len(text) * 0.6:
+        if common > len(text) * 0.5:
             need_fetch = True
 
     if not need_fetch or not url:
+        return text
+
+    # 对已知无法提取正文的页面类型直接放弃
+    if "video.sina.com.cn" in url:
         return text
 
     try:
@@ -1076,11 +1150,30 @@ def _enrich_article_content(article: dict) -> str:
         resp.encoding = resp.apparent_encoding or "utf-8"
         html = resp.text
 
-        # 优先按网站特性提取正文区块，再清标签（比全页清标签准确得多）
+        # 先按网站特性提取（最可靠）
         content_html = ""
+        body = ""
+
+        # 中新网：正文在 <!--正文start--> 与 <!--正文end--> 之间的 <div class="left_zw"> 中
+        if "chinanews.com" in url:
+            # 方法1：直接用正文注释定位
+            m = re.search(
+                r'<!--正文start-->(.*?)<!--正文end-->',
+                html, re.S | re.I
+            )
+            if m:
+                content_html = m.group(1)
+            # 方法2：定位 left_zw 容器（方法1失败时备用）
+            if not content_html:
+                m = re.search(
+                    r'<div[^>]+class="left_zw"[^>]*>(.*?)</div>\s*<div[^>]+class="clear"',
+                    html, re.S | re.I
+                )
+                if m:
+                    content_html = m.group(1)
 
         # 搜狐文章：<article> 标签
-        if "sohu.com/a/" in url:
+        if not content_html and "sohu.com/a/" in url:
             m = re.search(r"<article[^>]*>(.*?)</article>", html, re.S)
             if m:
                 content_html = m.group(1)
@@ -1101,26 +1194,44 @@ def _enrich_article_content(article: dict) -> str:
             if m:
                 content_html = m.group(1)
 
-        # 中新网 RSS 原文：<div id="content"> 或 <div class="content">
-        if not content_html and ("chinanews.com.cn" in url or "chinanews.com" in url):
-            m = re.search(r'<div id="content">(.*?)</div>\s*(?:<div|<script|<!--)', html, re.S)
-            if not m:
-                m = re.search(r'<div class="content[^"]*">(.*?)</div>\s*(?:<div|<script)', html, re.S)
-            if m:
-                content_html = m.group(1)
+        if content_html:
+            # 清理脚本/样式
+            body = re.sub(r"<script[^>]*>.*?</script>", "", content_html, flags=re.S)
+            body = re.sub(r"<style[^>]*>.*?</style>", "", body, flags=re.S)
+            # 只保留 <p> 标签里的文字
+            ps = re.findall(r"<p[^>]*>(.*?)</p>", body, re.S)
+            clean_ps = [re.sub(r"<[^>]+>", "", p).strip() for p in ps]
+            clean_ps = [p for p in clean_ps if len(p) >= 10 and re.search(r"[\u4e00-\u9fff]", p)]
+            if len(clean_ps) >= 2:
+                body = " ".join(clean_ps)
+                if len(body) > 1000:
+                    body = body[:1000]
+                if not _is_garbage_content(body, title):
+                    return f"{title}\n{body}"
 
-        # 通用回退：找最长的 <p> 标签密集区域（正文段落通常连续出现）
-        if not content_html:
-            # 找所有 <p> 标签，取连续最多的那块前后扩展
-            ps = list(re.finditer(r"<p[^>]*>(.*?)</p>", html, re.S))
-            if len(ps) >= 3:
-                # 找连续 <p> 最多的区域
+        # 通用高质量方案：找所有含中文的 <p> 标签，取连续密度最高的区域
+        all_paras = re.findall(r"<p[^>]*>(.*?)</p>", html, re.S)
+        good_paras = []
+        for p_html in all_paras:
+            text_only = re.sub(r"<[^>]+>", "", p_html).strip()
+            if len(text_only) >= 25 and re.search(r"[\u4e00-\u9fff]", text_only):
+                good_paras.append(text_only)
+
+        if len(good_paras) >= 3:
+            ps_iter = list(re.finditer(r"<p[^>]*>(.*?)</p>", html, re.S))
+            good_indices = []
+            for i, m in enumerate(ps_iter):
+                text_only = re.sub(r"<[^>]+>", "", m.group(1)).strip()
+                if len(text_only) >= 25 and re.search(r"[\u4e00-\u9fff]", text_only):
+                    good_indices.append(i)
+
+            if len(good_indices) >= 3:
                 best_start = 0
-                best_count = 0
+                best_count = 1
                 cur_start = 0
                 cur_count = 1
-                for i in range(1, len(ps)):
-                    if ps[i].start() - ps[i-1].end() < 500:  # 两个 p 标签相距 <500 字符认为是同一区域
+                for i in range(1, len(good_indices)):
+                    if good_indices[i] - good_indices[i-1] <= 3:
                         cur_count += 1
                     else:
                         if cur_count > best_count:
@@ -1131,26 +1242,17 @@ def _enrich_article_content(article: dict) -> str:
                 if cur_count > best_count:
                     best_count = cur_count
                     best_start = cur_start
-                # 取最佳区域前后各扩展 1 个 p
-                idx_start = max(0, best_start - 1)
-                idx_end = min(len(ps), best_start + best_count + 1)
-                content_html = "".join(ps[j].group(0) for j in range(idx_start, idx_end))
 
-        # 从提取的正文区块中清标签
-        if content_html:
-            body = re.sub(r"<script[^>]*>.*?</script>", "", content_html, flags=re.S)
-            body = re.sub(r"<style[^>]*>.*?</style>", "", body, flags=re.S)
-            body = re.sub(r"<[^>]+>", " ", body)
-            body = re.sub(r"&[a-z]+;", " ", body)
-            body = re.sub(r"\s+", " ", body).strip()
+                selected = good_indices[best_start:best_start + best_count]
+                body = " ".join(re.sub(r"<[^>]+", "", ps_iter[i].group(1)) for i in selected)
+                body = re.sub(r"\s+", " ", body).strip()
+                if len(body) > 200:
+                    if len(body) > 1000:
+                        body = body[:1000]
+                    if not _is_garbage_content(body, title):
+                        return f"{title}\n{body}"
 
-            # 取前 800 字
-            if len(body) > 800:
-                body = body[:800]
-            if len(body) > len(text) + 20:
-                return f"{title}\n{body}"
-
-        # 以上都失败，降级到旧的全页清标签方案
+        # 以上失败，降级到全页清标签方案
         html2 = re.sub(r"<script[^>]*>.*?</script>", "", html, flags=re.S)
         html2 = re.sub(r"<style[^>]*>.*?</style>", "", html2, flags=re.S)
         html2 = re.sub(r"<[^>]+>", "", html2)
@@ -1164,7 +1266,6 @@ def _enrich_article_content(article: dict) -> str:
                 continue
             lines.append(s)
         if lines:
-            # 定位正文起点
             start = 0
             for i, line in enumerate(lines):
                 if len(line) >= 30:
@@ -1174,11 +1275,13 @@ def _enrich_article_content(article: dict) -> str:
             if len(body) > 800:
                 body = body[:800]
             if len(body) > len(text) + 20:
-                return f"{title}\n{body}"
+                if not _is_garbage_content(body, title):
+                    return f"{title}\n{body}"
     except Exception:
         pass
 
-    return text
+    # fetch 失败时：如果有原始 RSS 摘要则返回它，否则返回空（让 fallback 替换）
+    return raw if raw else ""
 
 
 def _ai_summarize_one(title: str, text: str, limit: int, api_key: str) -> str:
@@ -1200,7 +1303,8 @@ def _ai_summarize_one(title: str, text: str, limit: int, api_key: str) -> str:
         '  · 禁止只说"举办了XX活动""XX亮相"而不说成果/数据\n'
         f'【自检】输出前检查：(1)字数≤{limit}？(2)有至少两个具体数据或事实吗？(3)以句号结尾吗？(4)去掉任意一个字会不会丢失关键信息？\n'
         '【合格示例】"滴滴陪诊杭州上线，2小时176元；行业存在黄牛加号收费3000元的灰色链条。"（有地名+定价+行业黑幕）\n'
-        '【不合格示例】"首届北京—伯明翰科技周举办，150余位代表参会，聚焦人工智能领域。"（只有一个数+活动描述，无实质）\n\n'
+        '【不合格示例】"首届北京—伯明翰科技周举办，150余位代表参会，聚焦人工智能领域。"（只有一个数+活动描述，无实质）\n'
+        '【重要】如果新闻内容确实是软文/活动报道/无实质信息，请直接输出"质量不足"三个字，不要强行写摘要。\n\n'
         f'标题：{title}\n'
         f'内容：{text}\n\n'
         '请直接输出摘要正文，不要加序号、不要加任何前缀或说明。'
@@ -1227,13 +1331,18 @@ def _ai_summarize_one(title: str, text: str, limit: int, api_key: str) -> str:
         # 清理 AI 可能加的前缀
         summary = re.sub(r"^(摘要[：:]\s*)", "", summary)
         summary = summary.rstrip("…。，、；：！？")
+        
+        # 拒绝AI的"质量不足"返回
+        if "质量不足" in summary or "无实质" in summary or len(summary) < 10:
+            return ""
+        
         if len(summary) > limit:
             summary = truncate(summary + "。", limit)
         else:
             summary = truncate(summary, limit)
         if not summary.endswith("。"):
             summary += "。"
-        return summary if len(summary) >= 40 else ""
+        return summary if len(summary) >= 20 else ""
     except Exception:
         return ""
 
@@ -1348,6 +1457,22 @@ def main() -> None:
             for a in articles:
                 a["raw_summary"] = a.get("summary", "")
             ai_summarize_batch(articles, limit=80, api_key=api_key)
+            # AI 未覆盖的文章回退到规则清洗（与 fetch 模式保持一致）
+            fallback_count = 0
+            for a in articles:
+                if not a.get("_ai_summary"):
+                    raw = (a.get("raw_content", "")
+                          or a.get("_feed_text", "")
+                          or a.get("raw_summary", "")
+                          or a.get("summary", ""))
+                    if not raw:
+                        raw = a.get("title", "")
+                    improved = summarize(raw=raw, title=a.get("title", ""), limit=65)
+                    if improved and len(improved) >= 20:
+                        a["summary"] = improved
+                        fallback_count += 1
+            if fallback_count:
+                print(f"  [摘要] {fallback_count} 条 AI 未覆盖，已用规则清洗补齐")
         else:
             print("[摘要] 无 API key，跳过 AI 摘要")
         # 按分类重选（含分类内去重 + 跨日去重），不足用 fallback 补齐
@@ -1374,7 +1499,34 @@ def main() -> None:
                     if len(s) >= target:
                         break
             selected.extend(s[:target])
-        articles = selected
+
+        # 最终质量兜底：把空/垃圾摘要的文章替换为 fallback
+        final_clean: list[dict] = []
+        replaced_count = 0
+        for a in selected:
+            if _has_valid_summary(a.get("summary", ""), a.get("title", "")):
+                final_clean.append(a)
+            else:
+                scope = a.get("scope", "")
+                fallback_pool = [
+                    fb for fb in config.get("fallback_articles", [])
+                    if fb.get("scope") == scope
+                ]
+                used_titles = {x.get("title", "") for x in final_clean}
+                used_titles.update(p.get("title", "") for p in previous if p.get("scope") == scope)
+                replaced = False
+                for fb in fallback_pool:
+                    if fb.get("title", "") not in used_titles:
+                        final_clean.append(fb)
+                        replaced_count += 1
+                        replaced = True
+                        break
+                if not replaced:
+                    # 没有可用 fallback，保留原样（但这种情况很少）
+                    final_clean.append(a)
+        if replaced_count:
+            print(f"[选稿] {replaced_count} 条空/垃圾摘要被 fallback 替换")
+        articles = final_clean
         print(f"[选稿] 去重后国内={len([a for a in articles if a.get('scope')=='domestic'])} 条，国际={len([a for a in articles if a.get('scope')=='international'])} 条")
     else:
         articles, errors = (
@@ -1414,6 +1566,36 @@ def main() -> None:
                     improved = summarize(raw=raw_summary or raw_title, title=raw_title, limit=65)
                     if improved and len(improved) >= 40:
                         a["summary"] = improved
+
+            # 最终质量兜底：把空/垃圾摘要的文章替换为 fallback（与 --articles-json 路径一致）
+            prev_dir_q = output_dir if args.output_dir else (ROOT / "output")
+            previous_q = _load_previous_articles(prev_dir_q, poster_date)
+            final_clean: list[dict] = []
+            replaced_count = 0
+            for a in articles:
+                if _has_valid_summary(a.get("summary", ""), a.get("title", "")):
+                    final_clean.append(a)
+                else:
+                    scope = a.get("scope", "")
+                    fallback_pool = [
+                        fb for fb in config.get("fallback_articles", [])
+                        if fb.get("scope") == scope
+                    ]
+                    used_titles = {x.get("title", "") for x in final_clean}
+                    used_titles.update(p.get("title", "") for p in previous_q if p.get("scope") == scope)
+                    replaced = False
+                    for fb in fallback_pool:
+                        if fb.get("title", "") not in used_titles:
+                            final_clean.append(fb)
+                            replaced_count += 1
+                            replaced = True
+                            break
+                    if not replaced:
+                        final_clean.append(a)
+            if replaced_count:
+                print(f"[选稿] {replaced_count} 条空/垃圾摘要被 fallback 替换")
+            articles = final_clean
+            print(f"[选稿] 质量兜底后国内={len([a for a in articles if a.get('scope')=='domestic'])} 条，国际={len([a for a in articles if a.get('scope')=='international'])} 条")
 
     # 2. 生成 HTML
     basename_str = f"每日资讯-{poster_date.isoformat()}"
