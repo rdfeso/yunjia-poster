@@ -12,41 +12,47 @@
       font-family: "PingFang SC", "Microsoft YaHei", sans-serif;
       background: #f7f3ea;
     }
-    .poster { display: flex; flex-direction: column; width: 1080px; margin: 0 auto; background: #f8f4eb; }
-    .top-accent { height: 18px; background: #19528c; }
-    .header { position: relative; height: 348px; padding: 54px 72px 0; color: #fff; background: #174b80 url("{{HEADER_URI}}") center / cover no-repeat; }
-    .brand { display: flex; align-items: center; gap: 18px; height: 88px; }
-    .logo { display: block; width: 82px; height: 82px; object-fit: contain; }
-    .brand-name { color: #fff; font-size: 29px; font-weight: 700; letter-spacing: 3px; }
-    .brand-subtitle { margin-top: 8px; color: rgba(255,255,255,.78); font-size: 15px; letter-spacing: 7px; }
-    .title-row { margin-top: 34px; }
-    h1 { margin: 0; font-family: "Songti SC", serif; font-size: 86px; font-weight: 700; letter-spacing: 14px; }
-    .date-wrap { display: flex; align-items: center; gap: 16px; margin-top: 10px; text-align: left; }
-    .date { font-size: 18px; letter-spacing: 2px; }
-    .lunar { color: #f1d7b4; font-size: 16px; letter-spacing: 2px; }
-    .issue { font-size: 12px; letter-spacing: 2px; opacity: .6; }
-    .content { padding: 42px 60px 0; flex: 1; }
-    .section-label { display: flex; align-items: center; gap: 14px; margin: 0 0 18px; color: #19528c; font-size: 22px; font-weight: 700; letter-spacing: 6px; }
-    .section-label.international { margin-top: 30px; }
-    .section-label::before { content: ""; width: 42px; height: 4px; background: #19528c; }
-    .news-list { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; flex: 1; }
-    .news-card { display: flex; min-height: 141px; padding: 18px 16px; border: 1px solid #e6ddcf; background: rgba(255,255,255,.72); }
-    .news-index { flex: 0 0 54px; color: #b69266; font-family: Georgia, serif; font-size: 33px; font-weight: 700; line-height: 1; }
-    .news-meta { display: flex; align-items: center; gap: 10px; margin-bottom: 8px; font-size: 15px; }
-    .category { padding: 3px 8px; color: #fff; background: #19528c; border-radius: 2px; font-size: 15px; }
-    .source { color: #9a8f80; font-size: 15px; }
-    h2 { margin: 0; color: #222; font-size: 21px; line-height: 1.4; }
-    p { margin: 6px 0 0; color: #756d62; font-size: 16.5px; line-height: 1.55; }
-    .footer { margin: 28px 60px 0; display: grid; grid-template-columns: 1fr 176px; gap: 28px; padding: 26px 28px; color: #fff; background: #174b80; }
-    .recruit-title { color: #e9c891; font-size: 17px; font-weight: 700; letter-spacing: 3px; }
-    .recruit-text { margin-top: 10px; font-size: 20px; font-weight: 600; line-height: 1.7; letter-spacing: 1px; }
-    .contact-info { margin-top: 14px; display: flex; flex-direction: column; gap: 4px; font-size: 15px; color: rgba(255,255,255,.72); letter-spacing: 1px; }
+    .poster { display: flex; flex-direction: column; width: 100%; max-width: 1080px; margin: 0 auto; background: #f8f4eb; }
+    .top-accent { height: clamp(10px, 1.8vw, 18px); background: #19528c; }
+    .header { position: relative; min-height: 348px; padding: clamp(28px, 5vw, 54px) clamp(20px, 6.7vw, 72px) 0; color: #fff; background: #174b80 url("{{HEADER_URI}}") center / cover no-repeat; }
+    .brand { display: flex; align-items: center; gap: clamp(10px, 1.7vw, 18px); min-height: 88px; }
+    .logo { display: block; width: clamp(56px, 7.6vw, 82px); height: clamp(56px, 7.6vw, 82px); object-fit: contain; }
+    .brand-name { color: #fff; font-size: clamp(18px, 2.7vw, 29px); font-weight: 700; letter-spacing: 3px; }
+    .brand-subtitle { margin-top: 8px; color: rgba(255,255,255,.78); font-size: clamp(12px, 1.4vw, 15px); letter-spacing: 7px; }
+    .title-row { margin-top: clamp(18px, 3.1vw, 34px); }
+    h1 { margin: 0; font-family: "Songti SC", serif; font-size: clamp(42px, 8vw, 86px); font-weight: 700; letter-spacing: clamp(6px, 1.3vw, 14px); }
+    .date-wrap { display: flex; align-items: center; gap: clamp(8px, 1.5vw, 16px); margin-top: 10px; text-align: left; flex-wrap: wrap; }
+    .date { font-size: clamp(14px, 1.7vw, 18px); letter-spacing: 2px; }
+    .lunar { color: #f1d7b4; font-size: clamp(13px, 1.5vw, 16px); letter-spacing: 2px; }
+    .issue { font-size: clamp(11px, 1.1vw, 12px); letter-spacing: 2px; opacity: .6; }
+    .content { padding: clamp(24px, 3.9vw, 42px) clamp(16px, 5.6vw, 60px) 0; flex: 1; }
+    .section-label { display: flex; align-items: center; gap: clamp(10px, 1.3vw, 14px); margin: 0 0 clamp(16px, 2vw, 22px); color: #19528c; font-size: clamp(24px, 3.4vw, 42px); font-weight: 700; letter-spacing: 6px; }
+    .section-label.international { margin-top: clamp(24px, 3vw, 32px); }
+    .section-label::before { content: ""; width: clamp(28px, 3.9vw, 42px); height: 4px; background: #19528c; }
+    .news-list { display: flex; flex-direction: column; gap: clamp(14px, 1.7vw, 18px); flex: 1; }
+    .news-card { display: flex; padding: clamp(18px, 2.6vw, 28px) clamp(20px, 3vw, 32px); border: 1px solid #e6ddcf; background: rgba(255,255,255,.72); }
+    .news-index { flex: 0 0 clamp(48px, 6.5vw, 70px); color: #b69266; font-family: Georgia, serif; font-size: clamp(34px, 4.6vw, 60px); font-weight: 700; line-height: 1; }
+    .news-meta { display: flex; align-items: center; gap: clamp(8px, 1.3vw, 14px); margin-bottom: clamp(8px, 1.1vw, 12px); font-size: clamp(16px, 2.3vw, 26px); flex-wrap: wrap; }
+    .category { padding: clamp(3px, 0.5vw, 5px) clamp(8px, 1.1vw, 12px); color: #fff; background: #19528c; border-radius: 2px; font-size: clamp(16px, 2.3vw, 26px); }
+    .source { color: #9a8f80; font-size: clamp(16px, 2.3vw, 26px); }
+    h2 { margin: 0; color: #222; font-size: clamp(24px, 3.7vw, 40px); line-height: 1.4; }
+    p { margin: clamp(6px, 0.9vw, 10px) 0 0; color: #756d62; font-size: clamp(18px, 3vw, 30px); line-height: 1.75; }
+    .footer { margin: clamp(20px, 2.6vw, 28px) clamp(16px, 5.6vw, 60px) 0; display: grid; grid-template-columns: 1fr clamp(120px, 16.3vw, 176px); gap: clamp(16px, 2.6vw, 28px); padding: clamp(18px, 2.4vw, 26px) clamp(16px, 2.6vw, 28px); color: #fff; background: #174b80; }
+    .recruit-title { color: #e9c891; font-size: clamp(14px, 1.6vw, 17px); font-weight: 700; letter-spacing: 3px; }
+    .recruit-text { margin-top: 10px; font-size: clamp(16px, 2.2vw, 22px); font-weight: 600; line-height: 1.7; letter-spacing: 1px; }
+    .contact-info { margin-top: 14px; display: flex; flex-direction: column; gap: 4px; font-size: clamp(13px, 1.4vw, 15px); color: rgba(255,255,255,.72); letter-spacing: 1px; }
     .contact-item { line-height: 1.6; }
-    .quote { margin-top: 17px; padding-top: 14px; border-top: 1px solid rgba(255,255,255,.18); color: rgba(255,255,255,.78); font-size: 18px; line-height: 1.7; }
+    .quote { margin-top: 17px; padding-top: 14px; border-top: 1px solid rgba(255,255,255,.18); color: rgba(255,255,255,.78); font-size: clamp(15px, 1.9vw, 19px); line-height: 1.7; }
     .qr-box { text-align: center; }
-    .qr { width: 152px; height: 152px; padding: 6px; background: #fff; }
-    .qr-label { margin-top: 7px; color: #e9c891; font-size: 12px; letter-spacing: 1px; }
-    .disclaimer { margin: 16px 60px 34px; color: #a39b90; font-size: 12px; line-height: 1.6; text-align: center; letter-spacing: 1px; }
+    .qr { width: clamp(100px, 14.1vw, 152px); height: clamp(100px, 14.1vw, 152px); padding: 6px; background: #fff; }
+    .qr-label { margin-top: 7px; color: #e9c891; font-size: clamp(11px, 1.1vw, 12px); letter-spacing: 1px; }
+    .disclaimer { margin: clamp(12px, 1.5vw, 16px) clamp(16px, 5.6vw, 60px) clamp(20px, 3.1vw, 34px); color: #a39b90; font-size: clamp(11px, 1.3vw, 13px); line-height: 1.6; text-align: center; letter-spacing: 1px; }
+    @media (max-width: 480px) {
+      .header { min-height: 260px; }
+      .date-wrap { flex-direction: column; align-items: flex-start; gap: 4px; }
+      .footer { grid-template-columns: 1fr; }
+      .qr-box { text-align: left; }
+    }
   </style>
 </head>
 <body>
