@@ -16,6 +16,9 @@ concurrency:
   group: daily-poster-${{ github.run_id }}
   cancel-in-progress: false
 
+permissions:
+  contents: write
+
 jobs:
   build-and-push:
     runs-on: ubuntu-latest
@@ -148,9 +151,25 @@ jobs:
         run: |
           DATE_STR=$(TZ=Asia/Shanghai date +%Y-%m-%d)
           python generate_poster.py \
-            --articles-json "output/raw-articles-${DATE_STR}.json" \
+            --articles-json "data/raw-articles-${DATE_STR}.json" \
             --output-dir output \
             --date "$DATE_STR"
+
+      - name: Commit dedup data
+        if: steps.check.outputs.skip != 'true' && success()
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add data/ || true
+          if git diff --cached --quiet; then
+            echo "No dedup data changes to commit"
+          else
+            git commit -m "chore: update dedup data [skip ci]"
+            git push
+            echo "Dedup data committed and pushed"
+          fi
 
       - name: Upload poster artifact
         if: steps.check.outputs.skip != 'true'

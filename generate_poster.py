@@ -19,6 +19,8 @@ from pathlib import Path
 import requests
 
 ROOT = Path(__file__).resolve().parent
+DATA_DIR = ROOT / "data"  # 去重数据目录（不被 gitignore，GitHub Actions 可用）
+DATA_DIR.mkdir(exist_ok=True)
 
 # ---------------------------------------------------------------------------
 # 工具函数
@@ -435,12 +437,15 @@ def _reclassify_domestic_articles(articles: list[dict]) -> None:
 
 
 def _load_previous_articles(output_dir: Path, poster_date: dt.date, days: int = 7) -> list[dict]:
-    """加载前 N 天的已推送文章 + 持久化拒绝列表，用于跨日去重。"""
+    """加载前 N 天的已推送文章 + 持久化拒绝列表，用于跨日去重。
+    同时加载 published-articles-*.json（含 fallback 文章），确保 fallback 也参与跨日去重。
+    所有去重文件存放在 DATA_DIR（不被 gitignore，GitHub Actions 可用）。
+    """
     previous = []
-    # 加载前 N 天文章
+    # 加载前 N 天文章（raw-articles = RSS/网页抓取的原始文章）
     for i in range(1, days + 1):
         prev_date = poster_date - dt.timedelta(days=i)
-        prev_path = output_dir / f"raw-articles-{prev_date.isoformat()}.json"
+        prev_path = DATA_DIR / f"raw-articles-{prev_date.isoformat()}.json"
         if prev_path.exists():
             try:
                 with prev_path.open("r", encoding="utf-8") as f:
@@ -448,8 +453,19 @@ def _load_previous_articles(output_dir: Path, poster_date: dt.date, days: int = 
                 previous.extend(prev_articles)
             except Exception:
                 pass
+    # 加载前 N 天的 published-articles（最终发布的文章，包含 fallback）
+    for i in range(1, days + 1):
+        prev_date = poster_date - dt.timedelta(days=i)
+        pub_path = DATA_DIR / f"published-articles-{prev_date.isoformat()}.json"
+        if pub_path.exists():
+            try:
+                with pub_path.open("r", encoding="utf-8") as f:
+                    pub_articles = json.load(f)
+                previous.extend(pub_articles)
+            except Exception:
+                pass
     # 加载持久化拒绝列表
-    rejected_path = output_dir / "rejected-articles.json"
+    rejected_path = DATA_DIR / "rejected-articles.json"
     if rejected_path.exists():
         try:
             with rejected_path.open("r", encoding="utf-8") as f:
@@ -460,9 +476,20 @@ def _load_previous_articles(output_dir: Path, poster_date: dt.date, days: int = 
     return previous
 
 
+def _save_published_articles(output_dir: Path, poster_date: dt.date, articles: list[dict]) -> None:
+    """保存最终发布的文章列表（含 fallback），供跨日去重使用。"""
+    path = DATA_DIR / f"published-articles-{poster_date.isoformat()}.json"
+    try:
+        with path.open("w", encoding="utf-8") as f:
+            json.dump(articles, f, ensure_ascii=False, indent=2)
+        print(f"[发布] 保存 {len(articles)} 条已发布文章到 {path}")
+    except Exception as e:
+        print(f"[发布] 保存 published-articles 失败: {e}")
+
+
 def _load_used_fallbacks(output_dir: Path) -> dict:
     """加载持久化的 fallback 使用记录，返回 {title: date_str} 字典。"""
-    path = output_dir / "used-fallback-articles.json"
+    path = DATA_DIR / "used-fallback-articles.json"
     if path.exists():
         try:
             with path.open("r", encoding="utf-8") as f:
@@ -474,7 +501,7 @@ def _load_used_fallbacks(output_dir: Path) -> dict:
 
 def _save_used_fallbacks(output_dir: Path, used: dict) -> None:
     """保存 fallback 使用记录到磁盘。"""
-    path = output_dir / "used-fallback-articles.json"
+    path = DATA_DIR / "used-fallback-articles.json"
     try:
         with path.open("w", encoding="utf-8") as f:
             json.dump(used, f, ensure_ascii=False, indent=2)
@@ -489,9 +516,11 @@ def _pick_fallback(
     used_fallbacks: dict,
     poster_date: dt.date,
     cooldown_days: int = 14,
+    hard_min_days: int = 3,
 ) -> dict | None:
     """从 fallback 池中选一条未在冷却期内使用过的文章。
     优先选冷却期外的；若全部在冷却期内，退化为选最久未使用的（避免条数不足）。
+    但硬性禁止选用 hard_min_days 天内使用过的（防止短期重复）。
     """
     fallback_pool = [
         fb for fb in config.get("fallback_articles", [])
@@ -515,6 +544,9 @@ def _pick_fallback(
             if days_since >= cooldown_days:
                 used_fallbacks[title] = poster_date.isoformat()
                 return fb
+            # 硬性禁止：hard_min_days 天内用过的，不作为后备
+            if days_since < hard_min_days:
+                continue
             # 记录最久未用的，作为后备
             if days_since > oldest_days:
                 oldest_days = days_since
@@ -524,6 +556,30 @@ def _pick_fallback(
             used_fallbacks[title] = poster_date.isoformat()
             return fb
     # 第二轮：全部在冷却期内，选最久未用的（有总比没有好）
+    # 但已经在上面用 hard_min_days 过滤了，所以 oldest_fb 至少是 hard_min_days 天前的
+    if oldest_fb:
+        title = oldest_fb.get("title", "")
+        used_fallbacks[title] = poster_date.isoformat()
+        return oldest_fb
+    # 所有 fallback 都在 hard_min_days 内用过，或者全在 used_titles 中
+    # 最后兜底：忽略 hard_min_days，选最久未用的（宁可有重复也不能空）
+    for fb in fallback_pool:
+        title = fb.get("title", "")
+        if title in used_titles:
+            continue
+        last_used = used_fallbacks.get(title)
+        if not last_used:
+            used_fallbacks[title] = poster_date.isoformat()
+            return fb
+        try:
+            last_date = dt.date.fromisoformat(last_used)
+            days_since = (poster_date - last_date).days
+            if days_since > oldest_days:
+                oldest_days = days_since
+                oldest_fb = fb
+        except Exception:
+            used_fallbacks[title] = poster_date.isoformat()
+            return fb
     if oldest_fb:
         title = oldest_fb.get("title", "")
         used_fallbacks[title] = poster_date.isoformat()
@@ -1493,7 +1549,7 @@ def main() -> None:
     # --fetch-only: 仅抓取RSS，保存原始数据供AI处理
     if args.fetch_only:
         articles, errors = fetch_articles(config)
-        raw_path = output_dir / f"raw-articles-{poster_date.isoformat()}.json"
+        raw_path = DATA_DIR / f"raw-articles-{poster_date.isoformat()}.json"
         with raw_path.open("w", encoding="utf-8") as f:
             json.dump(articles, f, ensure_ascii=False, indent=2)
         print(f"[抓取] 保存 {len(articles)} 条原始文章到 {raw_path}")
@@ -1579,6 +1635,8 @@ def main() -> None:
 
         # 最终质量兜底：把空/垃圾摘要的文章替换为 fallback
         used_fb = _load_used_fallbacks(output_dir if args.output_dir else (ROOT / "output"))
+        # 预收集 selected 中所有标题，防止 Phase 2 重复选 Phase 1 已选的 fallback
+        all_selected_titles = {a.get("title", "") for a in selected}
         final_clean: list[dict] = []
         replaced_count = 0
         kept_original = 0
@@ -1588,6 +1646,7 @@ def main() -> None:
             else:
                 scope = a.get("scope", "")
                 used_titles = {x.get("title", "") for x in final_clean}
+                used_titles.update(all_selected_titles)  # 包含 Phase 1 已选的 fallback
                 used_titles.update(p.get("title", "") for p in previous if p.get("scope") == scope)
                 fb = _pick_fallback(config, scope, used_titles, used_fb, poster_date)
                 if fb:
@@ -1617,7 +1676,7 @@ def main() -> None:
         )
         # 保存 raw-articles 文件，供跨日去重使用
         if not args.no_fetch:
-            raw_path = output_dir / f"raw-articles-{poster_date.isoformat()}.json"
+            raw_path = DATA_DIR / f"raw-articles-{poster_date.isoformat()}.json"
             try:
                 with raw_path.open("w", encoding="utf-8") as f:
                     json.dump(articles, f, ensure_ascii=False, indent=2)
@@ -1661,6 +1720,8 @@ def main() -> None:
             prev_dir_q = output_dir if args.output_dir else (ROOT / "output")
             previous_q = _load_previous_articles(prev_dir_q, poster_date)
             used_fb = _load_used_fallbacks(prev_dir_q)
+            # 预收集所有文章标题，防止 Phase 2 重复选 Phase 1 已选的 fallback
+            all_articles_titles = {a.get("title", "") for a in articles}
             final_clean: list[dict] = []
             replaced_count = 0
             kept_original = 0
@@ -1670,6 +1731,7 @@ def main() -> None:
                 else:
                     scope = a.get("scope", "")
                     used_titles = {x.get("title", "") for x in final_clean}
+                    used_titles.update(all_articles_titles)  # 包含 Phase 1 已选的 fallback
                     used_titles.update(p.get("title", "") for p in previous_q if p.get("scope") == scope)
                     fb = _pick_fallback(config, scope, used_titles, used_fb, poster_date)
                     if fb:
@@ -1691,6 +1753,9 @@ def main() -> None:
                 print(f"[选稿] {kept_original} 条 fallback 池耗尽，保留原文章+规则摘要")
             articles = final_clean
             print(f"[选稿] 质量兜底后国内={len([a for a in articles if a.get('scope')=='domestic'])} 条，国际={len([a for a in articles if a.get('scope')=='international'])} 条")
+
+    # 保存最终发布的文章（含 fallback），供跨日去重使用
+    _save_published_articles(output_dir, poster_date, articles)
 
     # 2. 生成 HTML
     basename_str = f"每日资讯-{poster_date.isoformat()}"
