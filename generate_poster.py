@@ -257,13 +257,20 @@ _PRIORITY_KEYWORDS = [
 ]
 
 
-def _score_article(title: str, summary: str) -> int:
+def _score_article(title: str, summary: str, source: str = "") -> int:
     """对文章打分，分数越高越优先选中。"""
     text = title + summary
     score = 0
 
-    # 空摘要或垃圾摘要直接判负分，优先被 fallback 替换
-    if not _has_valid_summary(summary, title):
+    # 空摘要处理：
+    # - 网页源文章（网易/新浪/搜狐等）：不扣分，后续 _enrich_article_content 会补充正文
+    # - 中新网 RSS 空摘要：轻降权 -5
+    # - 垃圾内容（版权声明/标题重复等）：重降权 -50
+    is_web_source = source and source not in ("中新网", "人民网", "新华日报")
+    if not summary or len(summary.strip()) < 5:
+        if not is_web_source:
+            score -= 5
+    elif _is_garbage_content(summary, title):
         score -= 50
     for kw in _PRIORITY_KEYWORDS:
         if kw in text:
@@ -427,7 +434,7 @@ def _reclassify_domestic_articles(articles: list[dict]) -> None:
             a["category"] = "综合资讯"
 
 
-def _load_previous_articles(output_dir: Path, poster_date: dt.date, days: int = 2) -> list[dict]:
+def _load_previous_articles(output_dir: Path, poster_date: dt.date, days: int = 7) -> list[dict]:
     """加载前 N 天的已推送文章 + 持久化拒绝列表，用于跨日去重。"""
     previous = []
     # 加载前 N 天文章
@@ -453,6 +460,77 @@ def _load_previous_articles(output_dir: Path, poster_date: dt.date, days: int = 
     return previous
 
 
+def _load_used_fallbacks(output_dir: Path) -> dict:
+    """加载持久化的 fallback 使用记录，返回 {title: date_str} 字典。"""
+    path = output_dir / "used-fallback-articles.json"
+    if path.exists():
+        try:
+            with path.open("r", encoding="utf-8") as f:
+                return json.load(f)
+        except Exception:
+            pass
+    return {}
+
+
+def _save_used_fallbacks(output_dir: Path, used: dict) -> None:
+    """保存 fallback 使用记录到磁盘。"""
+    path = output_dir / "used-fallback-articles.json"
+    try:
+        with path.open("w", encoding="utf-8") as f:
+            json.dump(used, f, ensure_ascii=False, indent=2)
+    except Exception:
+        pass
+
+
+def _pick_fallback(
+    config: dict,
+    scope: str,
+    used_titles: set,
+    used_fallbacks: dict,
+    poster_date: dt.date,
+    cooldown_days: int = 14,
+) -> dict | None:
+    """从 fallback 池中选一条未在冷却期内使用过的文章。
+    优先选冷却期外的；若全部在冷却期内，退化为选最久未使用的（避免条数不足）。
+    """
+    fallback_pool = [
+        fb for fb in config.get("fallback_articles", [])
+        if fb.get("scope") == scope
+    ]
+    # 第一轮：找冷却期外的
+    oldest_fb = None
+    oldest_days = -1
+    for fb in fallback_pool:
+        title = fb.get("title", "")
+        if title in used_titles:
+            continue
+        last_used = used_fallbacks.get(title)
+        if not last_used:
+            # 从未用过，最高优先
+            used_fallbacks[title] = poster_date.isoformat()
+            return fb
+        try:
+            last_date = dt.date.fromisoformat(last_used)
+            days_since = (poster_date - last_date).days
+            if days_since >= cooldown_days:
+                used_fallbacks[title] = poster_date.isoformat()
+                return fb
+            # 记录最久未用的，作为后备
+            if days_since > oldest_days:
+                oldest_days = days_since
+                oldest_fb = fb
+        except Exception:
+            # 日期解析失败，当作未用过
+            used_fallbacks[title] = poster_date.isoformat()
+            return fb
+    # 第二轮：全部在冷却期内，选最久未用的（有总比没有好）
+    if oldest_fb:
+        title = oldest_fb.get("title", "")
+        used_fallbacks[title] = poster_date.isoformat()
+        return oldest_fb
+    return None
+
+
 def select_articles(
     all_articles: list[dict],
     scope: str,
@@ -464,7 +542,7 @@ def select_articles(
     if not candidates:
         return []
     for a in candidates:
-        a["_score"] = _score_article(a.get("title", ""), a.get("summary", ""))
+        a["_score"] = _score_article(a.get("title", ""), a.get("summary", ""), a.get("source", ""))
     candidates.sort(key=lambda x: x["_score"], reverse=True)
 
     # 最低分数线：先按 ≥0 筛选，高分不足再放宽到 ≥-3
@@ -819,23 +897,22 @@ def fetch_articles(
         ("international", config.get("international_count", 6)),
     ):
         selected = select_articles(all_articles, scope, target, previous)
-        # 如果选出的文章不足，补充 fallback（fallback 也要跨日去重）
+        # 如果选出的文章不足，补充 fallback（fallback 也要跨日去重 + 持久化去重）
         if len(selected) < target:
-            fallback = [
-                a for a in config.get("fallback_articles", [])
-                if a.get("scope") == scope
-            ]
+            used_fb = _load_used_fallbacks(prev_dir)
             existing_titles = {a.get("title") for a in selected}
-            # 把前2天的标题也加入排除列表
             existing_titles.update(
                 a.get("title", "") for a in previous
                 if a.get("scope") == scope and a.get("title")
             )
-            for fb in fallback:
-                if fb.get("title") not in existing_titles:
+            while len(selected) < target:
+                fb = _pick_fallback(config, scope, existing_titles, used_fb, prev_date)
+                if fb:
                     selected.append(fb)
-                if len(selected) >= target:
-                    break
+                    existing_titles.add(fb.get("title", ""))
+                else:
+                    break  # fallback 池已耗尽
+            _save_used_fallbacks(prev_dir, used_fb)
         articles.extend(selected[:target])
     return articles, errors
 
@@ -1484,48 +1561,52 @@ def main() -> None:
         ):
             s = select_articles(articles, scope, target, previous)
             if len(s) < target:
-                fallback = [
-                    a for a in config.get("fallback_articles", [])
-                    if a.get("scope") == scope
-                ]
+                used_fb_aj = _load_used_fallbacks(output_dir if args.output_dir else (ROOT / "output"))
                 existing_titles = {a.get("title") for a in s}
                 existing_titles.update(
                     a.get("title", "") for a in previous
                     if a.get("scope") == scope and a.get("title")
                 )
-                for fb in fallback:
-                    if fb.get("title") not in existing_titles:
+                while len(s) < target:
+                    fb = _pick_fallback(config, scope, existing_titles, used_fb_aj, poster_date)
+                    if fb:
                         s.append(fb)
-                    if len(s) >= target:
+                        existing_titles.add(fb.get("title", ""))
+                    else:
                         break
+                _save_used_fallbacks(output_dir if args.output_dir else (ROOT / "output"), used_fb_aj)
             selected.extend(s[:target])
 
         # 最终质量兜底：把空/垃圾摘要的文章替换为 fallback
+        used_fb = _load_used_fallbacks(output_dir if args.output_dir else (ROOT / "output"))
         final_clean: list[dict] = []
         replaced_count = 0
+        kept_original = 0
         for a in selected:
             if _has_valid_summary(a.get("summary", ""), a.get("title", "")):
                 final_clean.append(a)
             else:
                 scope = a.get("scope", "")
-                fallback_pool = [
-                    fb for fb in config.get("fallback_articles", [])
-                    if fb.get("scope") == scope
-                ]
                 used_titles = {x.get("title", "") for x in final_clean}
                 used_titles.update(p.get("title", "") for p in previous if p.get("scope") == scope)
-                replaced = False
-                for fb in fallback_pool:
-                    if fb.get("title", "") not in used_titles:
-                        final_clean.append(fb)
-                        replaced_count += 1
-                        replaced = True
-                        break
-                if not replaced:
-                    # 没有可用 fallback，保留原样（但这种情况很少）
+                fb = _pick_fallback(config, scope, used_titles, used_fb, poster_date)
+                if fb:
+                    final_clean.append(fb)
+                    replaced_count += 1
+                else:
+                    # fallback 池已耗尽（30天内全用过），保留原文章 + 规则摘要
+                    raw = (a.get("raw_content", "") or a.get("_feed_text", "")
+                           or a.get("raw_summary", "") or a.get("summary", "")
+                           or a.get("title", ""))
+                    improved = summarize(raw=raw, title=a.get("title", ""), limit=65)
+                    a["summary"] = improved or a.get("title", "")
                     final_clean.append(a)
+                    kept_original += 1
+        _save_used_fallbacks(output_dir if args.output_dir else (ROOT / "output"), used_fb)
         if replaced_count:
             print(f"[选稿] {replaced_count} 条空/垃圾摘要被 fallback 替换")
+        if kept_original:
+            print(f"[选稿] {kept_original} 条 fallback 池耗尽，保留原文章+规则摘要")
         articles = final_clean
         print(f"[选稿] 去重后国内={len([a for a in articles if a.get('scope')=='domestic'])} 条，国际={len([a for a in articles if a.get('scope')=='international'])} 条")
     else:
@@ -1534,6 +1615,15 @@ def main() -> None:
             if args.no_fetch
             else fetch_articles(config, output_dir, poster_date)
         )
+        # 保存 raw-articles 文件，供跨日去重使用
+        if not args.no_fetch:
+            raw_path = output_dir / f"raw-articles-{poster_date.isoformat()}.json"
+            try:
+                with raw_path.open("w", encoding="utf-8") as f:
+                    json.dump(articles, f, ensure_ascii=False, indent=2)
+                print(f"[抓取] 保存 {len(articles)} 条原始文章到 {raw_path}")
+            except Exception as e:
+                print(f"[抓取] 保存 raw-articles 失败: {e}")
         # 自动摘要：有 API key 用 AI，没 key 回退规则清洗
         if not args.no_fetch:
             api_key = config.get("deepseek_api_key", "").strip()
@@ -1570,30 +1660,35 @@ def main() -> None:
             # 最终质量兜底：把空/垃圾摘要的文章替换为 fallback（与 --articles-json 路径一致）
             prev_dir_q = output_dir if args.output_dir else (ROOT / "output")
             previous_q = _load_previous_articles(prev_dir_q, poster_date)
+            used_fb = _load_used_fallbacks(prev_dir_q)
             final_clean: list[dict] = []
             replaced_count = 0
+            kept_original = 0
             for a in articles:
                 if _has_valid_summary(a.get("summary", ""), a.get("title", "")):
                     final_clean.append(a)
                 else:
                     scope = a.get("scope", "")
-                    fallback_pool = [
-                        fb for fb in config.get("fallback_articles", [])
-                        if fb.get("scope") == scope
-                    ]
                     used_titles = {x.get("title", "") for x in final_clean}
                     used_titles.update(p.get("title", "") for p in previous_q if p.get("scope") == scope)
-                    replaced = False
-                    for fb in fallback_pool:
-                        if fb.get("title", "") not in used_titles:
-                            final_clean.append(fb)
-                            replaced_count += 1
-                            replaced = True
-                            break
-                    if not replaced:
+                    fb = _pick_fallback(config, scope, used_titles, used_fb, poster_date)
+                    if fb:
+                        final_clean.append(fb)
+                        replaced_count += 1
+                    else:
+                        # fallback 池已耗尽，保留原文章 + 规则摘要
+                        raw = (a.get("raw_content", "") or a.get("_feed_text", "")
+                               or a.get("raw_summary", "") or a.get("summary", "")
+                               or a.get("title", ""))
+                        improved = summarize(raw=raw, title=a.get("title", ""), limit=65)
+                        a["summary"] = improved or a.get("title", "")
                         final_clean.append(a)
+                        kept_original += 1
+            _save_used_fallbacks(prev_dir_q, used_fb)
             if replaced_count:
                 print(f"[选稿] {replaced_count} 条空/垃圾摘要被 fallback 替换")
+            if kept_original:
+                print(f"[选稿] {kept_original} 条 fallback 池耗尽，保留原文章+规则摘要")
             articles = final_clean
             print(f"[选稿] 质量兜底后国内={len([a for a in articles if a.get('scope')=='domestic'])} 条，国际={len([a for a in articles if a.get('scope')=='international'])} 条")
 
