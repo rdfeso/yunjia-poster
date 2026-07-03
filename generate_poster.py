@@ -259,7 +259,7 @@ _PRIORITY_KEYWORDS = [
 ]
 
 
-def _score_article(title: str, summary: str, source: str = "") -> int:
+def _score_article(title: str, summary: str, source: str = "", article: dict | None = None) -> int:
     """对文章打分，分数越高越优先选中。"""
     text = title + summary
     score = 0
@@ -304,13 +304,40 @@ def _score_article(title: str, summary: str, source: str = "") -> int:
             break
     # 软新闻/正能量宣传降权（无实质新闻价值）
     _SOFT_NEWS_KW = ["点赞", "研修班", "体验", "喜讯", "佳话", "暖心", "感动", "成功举办",
-                     "圆满落幕", "顺利举行", "幸福感", "获得感", "安全感", "蓬勃发展",
+                     "圆满落幕", "圆满结束", "顺利举行", "幸福感", "获得感", "安全感", "蓬勃发展",
                      "谱写新篇", "昂扬奋进", "砥砺前行", "致敬", "感恩", "加油",
-                     "涂层剥落", "倒影池", "纪念堂", "世界之最", "奇闻"]
+                     "涂层剥落", "倒影池", "纪念堂", "世界之最", "奇闻",
+                     # 主题宣传/活动报道（无实质法律价值）
+                     "主题宣传", "主题活动", "文化季", "宣传周", "启动仪式", "开幕仪式",
+                     "完美收官", "盛大启幕", "火热进行", "顺利召开", "胜利召开",
+                     ]
     for w in _SOFT_NEWS_KW:
         if w in title:
-            score -= 5
+            score -= 8
             break
+    # 体育新闻降权（律师所受众不需要）
+    _SPORTS_KW = ["男篮", "女足", "排球", "乒乓球", "羽毛球", "游泳", "跳水", "体操",
+                 "田径", "马拉松", "奥运", "世界杯", "亚运", "亚冠", "联赛", "中超",
+                 "CBA", "NBA", "英超", "西甲", "德甲", "意甲", "欧冠", "总决赛",
+                 "冠军", "夺冠", "晋级", "出线", "集训", "热身赛", "友谊赛",
+                 "大名单", "首发", "替补", "球员", "教练", "主帅", "国家队",
+                 ]
+    for w in _SPORTS_KW:
+        if w in title:
+            score -= 12
+            break
+    # 标题党/段子/轻松一刻类降权
+    _SPAM_TITLE_KW = ["一刻", "神回复", "段子", "糗事", "搞笑", "幽默", "笑死", "笑喷",
+                      "笑哭", "整蛊", "恶搞", "放屁", "被坑", "活该", "笑翻了",
+                      "段子手", "神评论", "沙雕", "社死", "破防了",
+                      ]
+    for w in _SPAM_TITLE_KW:
+        if w in title:
+            score -= 15
+            break
+    # 富化失败的网页源（SPA/slide/无内容）：大幅扣分，确保不会进入选稿
+    if article and article.get("_enrich_failed"):
+        score -= 30
     # 节日/旅游/软性消费内容降权（律所资讯受众不需要）
     # 注意：这里用 title 而非 text，避免误杀"旅游纠纷"等法律相关内容
     _HOLIDAY_SOFT_KW = [
@@ -327,10 +354,12 @@ def _score_article(title: str, summary: str, source: str = "") -> int:
         "挑桃子", "吃法", "食谱", "美食攻略",
         # 宣传/典礼/活动
         "达沃斯", "论坛参会", "揽客", "夏令营",
+        # 旅游产业动态（不是法律/民生话题）
+        "旅游公路", "交旅融合", "旅游品牌", "全域旅游", "乡村旅游",
     ]
     for w in _HOLIDAY_SOFT_KW:
         if w in title:
-            score -= 6
+            score -= 10
             break
     # 扶贫/乡村振兴/宣传类软文降权（正能量宣传，无实质法律/商业价值）
     _PROPAGANDA_KW = [
@@ -598,7 +627,7 @@ def select_articles(
     if not candidates:
         return []
     for a in candidates:
-        a["_score"] = _score_article(a.get("title", ""), a.get("summary", ""), a.get("source", ""))
+        a["_score"] = _score_article(a.get("title", ""), a.get("summary", ""), a.get("source", ""), article=a)
     candidates.sort(key=lambda x: x["_score"], reverse=True)
 
     # 最低分数线：先按 ≥0 筛选，高分不足再放宽到 ≥-3
@@ -777,6 +806,9 @@ def _classify_by_title(title: str, default_scope: str, default_category: str) ->
         "国际", "美国", "俄罗斯", "乌克兰", "以色列", "伊朗", "朝鲜", "韩国",
         "日本", "欧盟", "北约", "中东", "亚太", "非盟", "拉美", "越南", "印度",
         "巴以", "俄乌", "美以", "特朗普", "拜登", "普京", "泽连斯基", "内塔尼亚胡",
+        "巴基斯坦", "巴方", "奎达", "伊斯兰堡", "哈梅内伊", "德黑兰", "沙特",
+        "阿联酋", "土耳其", "叙利亚", "阿富汗", "缅甸", "菲律宾", "新加坡",
+        "金正恩", "尹锡悦", "岸田", "马克龙", "朔尔茨", "莫迪", "埃尔多安",
     ]
     if any(k in title for k in intl_keywords):
         return "international", "国际"
@@ -956,10 +988,14 @@ def fetch_articles(
         # 如果选出的文章不足，补充 fallback（fallback 也要跨日去重 + 持久化去重）
         if len(selected) < target:
             used_fb = _load_used_fallbacks(prev_dir)
+            # existing_titles 不应包含前 N 天的 fallback 标题（由 used_fallbacks cooldown 管理）
+            fb_titles_in_config = {fb.get("title", "") for fb in config.get("fallback_articles", [])}
             existing_titles = {a.get("title") for a in selected}
             existing_titles.update(
                 a.get("title", "") for a in previous
-                if a.get("scope") == scope and a.get("title")
+                if a.get("scope") == scope
+                and a.get("title")
+                and a.get("title") not in fb_titles_in_config
             )
             while len(selected) < target:
                 fb = _pick_fallback(config, scope, existing_titles, used_fb, prev_date)
@@ -1272,9 +1308,19 @@ def _enrich_article_content(article: dict) -> str:
     if not need_fetch or not url:
         return text
 
-    # 对已知无法提取正文的页面类型直接放弃
-    if "video.sina.com.cn" in url:
-        return text
+    # 对已知无法提取正文的页面类型直接放弃（标记为富化失败，避免 AI 拿到空文幻觉）
+    SPA_SKIP = [
+        "video.sina.com.cn",         # 新浪视频
+        "slide.news.sina.com.cn",    # 新浪 slide 图片轮播
+        "k.sina.com.cn/article_",    # 新浪 k 站 SPA 文章
+        "ent.sina.com.cn/video",     # 新浪娱乐视频
+        "slide.sports.sina.com.cn",  # 新浪体育图集
+        "baijiahao.baidu.com",       # 百家号 SPA
+    ]
+    for pat in SPA_SKIP:
+        if pat in url:
+            article["_enrich_failed"] = True
+            return ""
 
     try:
         resp = req.get(url, timeout=10, headers={
@@ -1413,8 +1459,11 @@ def _enrich_article_content(article: dict) -> str:
     except Exception:
         pass
 
-    # fetch 失败时：如果有原始 RSS 摘要则返回它，否则返回空（让 fallback 替换）
-    return raw if raw else ""
+    # fetch 失败时：如果有原始 RSS 摘要则返回它，否则标记富化失败并返回空
+    if raw:
+        return raw
+    article["_enrich_failed"] = True
+    return ""
 
 
 def _ai_summarize_one(title: str, text: str, limit: int, api_key: str) -> str:
@@ -1618,10 +1667,20 @@ def main() -> None:
             s = select_articles(articles, scope, target, previous)
             if len(s) < target:
                 used_fb_aj = _load_used_fallbacks(output_dir if args.output_dir else (ROOT / "output"))
+                # existing_titles 只包含：
+                # 1. 当前已选的 articles（Phase 1 内选的真实文章）
+                # 2. 前 N 天已推送的真实文章（按 source 不属于"fallback"或 config 来源的）
+                # 注意：不要把前 N 天的 fallback 标题加进去——fallback 跨日去重完全由
+                # used_fallbacks 的 cooldown 机制管理（_pick_fallback 第一轮 + 第二轮都会参考）。
+                # 之前把前 N 天 fallback 标题也加进 existing_titles，会导致 cooldown 已过的
+                # fallback 仍然被 used_titles 第一轮 continue 永久阻挡，pool 越来越小。
+                fb_titles_in_config = {fb.get("title", "") for fb in config.get("fallback_articles", [])}
                 existing_titles = {a.get("title") for a in s}
                 existing_titles.update(
                     a.get("title", "") for a in previous
-                    if a.get("scope") == scope and a.get("title")
+                    if a.get("scope") == scope
+                    and a.get("title")
+                    and a.get("title") not in fb_titles_in_config
                 )
                 while len(s) < target:
                     fb = _pick_fallback(config, scope, existing_titles, used_fb_aj, poster_date)
@@ -1637,6 +1696,8 @@ def main() -> None:
         used_fb = _load_used_fallbacks(output_dir if args.output_dir else (ROOT / "output"))
         # 预收集 selected 中所有标题，防止 Phase 2 重复选 Phase 1 已选的 fallback
         all_selected_titles = {a.get("title", "") for a in selected}
+        # 排除前 N 天的 fallback 标题（由 used_fallbacks cooldown 单独管理）
+        fb_titles_in_config = {fb.get("title", "") for fb in config.get("fallback_articles", [])}
         final_clean: list[dict] = []
         replaced_count = 0
         kept_original = 0
@@ -1647,7 +1708,12 @@ def main() -> None:
                 scope = a.get("scope", "")
                 used_titles = {x.get("title", "") for x in final_clean}
                 used_titles.update(all_selected_titles)  # 包含 Phase 1 已选的 fallback
-                used_titles.update(p.get("title", "") for p in previous if p.get("scope") == scope)
+                used_titles.update(
+                    p.get("title", "") for p in previous
+                    if p.get("scope") == scope
+                    and p.get("title")
+                    and p.get("title") not in fb_titles_in_config
+                )
                 fb = _pick_fallback(config, scope, used_titles, used_fb, poster_date)
                 if fb:
                     final_clean.append(fb)
