@@ -1,0 +1,330 @@
+[
+  {
+    "sha": "e7866bc9ee3f8503d2e855d8ce51f1f0a909b80a",
+    "node_id": "C_kwDOSwzi7NoAKGU3ODY2YmM5ZWUzZjg1MDNkMmU4NTVkOGNlNTFmMWYwYTkwOWI4MGE",
+    "commit": {
+      "author": {
+        "name": "github-actions[bot]",
+        "email": "github-actions[bot]@users.noreply.github.com",
+        "date": "2026-07-02T19:02:21Z"
+      },
+      "committer": {
+        "name": "github-actions[bot]",
+        "email": "github-actions[bot]@users.noreply.github.com",
+        "date": "2026-07-02T19:02:21Z"
+      },
+      "message": "chore: update dedup data [skip ci]",
+      "tree": {
+        "sha": "6600dfe49ef78121c220fa396f2e2f57b6a11046",
+        "url": "https://api.github.com/repos/rdfeso/yunjia-poster/git/trees/6600dfe49ef78121c220fa396f2e2f57b6a11046"
+      },
+      "url": "https://api.github.com/repos/rdfeso/yunjia-poster/git/commits/e7866bc9ee3f8503d2e855d8ce51f1f0a909b80a",
+      "comment_count": 0,
+      "verification": {
+        "verified": false,
+        "reason": "unsigned",
+        "signature": null,
+        "payload": null,
+        "verified_at": null
+      }
+    },
+    "url": "https://api.github.com/repos/rdfeso/yunjia-poster/commits/e7866bc9ee3f8503d2e855d8ce51f1f0a909b80a",
+    "html_url": "https://github.com/rdfeso/yunjia-poster/commit/e7866bc9ee3f8503d2e855d8ce51f1f0a909b80a",
+    "comments_url": "https://api.github.com/repos/rdfeso/yunjia-poster/commits/e7866bc9ee3f8503d2e855d8ce51f1f0a909b80a/comments",
+    "author": {
+      "login": "github-actions[bot]",
+      "id": 41898282,
+      "node_id": "MDM6Qm90NDE4OTgyODI=",
+      "avatar_url": "https://avatars.githubusercontent.com/in/15368?v=4",
+      "gravatar_id": "",
+      "url": "https://api.github.com/users/github-actions%5Bbot%5D",
+      "html_url": "https://github.com/apps/github-actions",
+      "followers_url": "https://api.github.com/users/github-actions%5Bbot%5D/followers",
+      "following_url": "https://api.github.com/users/github-actions%5Bbot%5D/following{/other_user}",
+      "gists_url": "https://api.github.com/users/github-actions%5Bbot%5D/gists{/gist_id}",
+      "starred_url": "https://api.github.com/users/github-actions%5Bbot%5D/starred{/owner}{/repo}",
+      "subscriptions_url": "https://api.github.com/users/github-actions%5Bbot%5D/subscriptions",
+      "organizations_url": "https://api.github.com/users/github-actions%5Bbot%5D/orgs",
+      "repos_url": "https://api.github.com/users/github-actions%5Bbot%5D/repos",
+      "events_url": "https://api.github.com/users/github-actions%5Bbot%5D/events{/privacy}",
+      "received_events_url": "https://api.github.com/users/github-actions%5Bbot%5D/received_events",
+      "type": "Bot",
+      "user_view_type": "public",
+      "site_admin": false
+    },
+    "committer": {
+      "login": "github-actions[bot]",
+      "id": 41898282,
+      "node_id": "MDM6Qm90NDE4OTgyODI=",
+      "avatar_url": "https://avatars.githubusercontent.com/in/15368?v=4",
+      "gravatar_id": "",
+      "url": "https://api.github.com/users/github-actions%5Bbot%5D",
+      "html_url": "https://github.com/apps/github-actions",
+      "followers_url": "https://api.github.com/users/github-actions%5Bbot%5D/followers",
+      "following_url": "https://api.github.com/users/github-actions%5Bbot%5D/following{/other_user}",
+      "gists_url": "https://api.github.com/users/github-actions%5Bbot%5D/gists{/gist_id}",
+      "starred_url": "https://api.github.com/users/github-actions%5Bbot%5D/starred{/owner}{/repo}",
+      "subscriptions_url": "https://api.github.com/users/github-actions%5Bbot%5D/subscriptions",
+      "organizations_url": "https://api.github.com/users/github-actions%5Bbot%5D/orgs",
+      "repos_url": "https://api.github.com/users/github-actions%5Bbot%5D/repos",
+      "events_url": "https://api.github.com/users/github-actions%5Bbot%5D/events{/privacy}",
+      "received_events_url": "https://api.github.com/users/github-actions%5Bbot%5D/received_events",
+      "type": "Bot",
+      "user_view_type": "public",
+      "site_admin": false
+    },
+    "parents": [
+      {
+        "sha": "3bcb9f451df7252cbb9371ae2f261c7033968ca7",
+        "url": "https://api.github.com/repos/rdfeso/yunjia-poster/commits/3bcb9f451df7252cbb9371ae2f261c7033968ca7",
+        "html_url": "https://github.com/rdfeso/yunjia-poster/commit/3bcb9f451df7252cbb9371ae2f261c7033968ca7"
+      }
+    ]
+  },
+  {
+    "sha": "3bcb9f451df7252cbb9371ae2f261c7033968ca7",
+    "node_id": "C_kwDOSwzi7NoAKDNiY2I5ZjQ1MWRmNzI1MmNiYjkzNzFhZTJmMjYxYzcwMzM5NjhjYTc",
+    "commit": {
+      "author": {
+        "name": "github-actions[bot]",
+        "email": "github-actions[bot]@users.noreply.github.com",
+        "date": "2026-07-01T19:02:07Z"
+      },
+      "committer": {
+        "name": "github-actions[bot]",
+        "email": "github-actions[bot]@users.noreply.github.com",
+        "date": "2026-07-01T19:02:07Z"
+      },
+      "message": "chore: update dedup data [skip ci]",
+      "tree": {
+        "sha": "c1536f35151a7feef9cc3f48fbb22ddf69ac51ba",
+        "url": "https://api.github.com/repos/rdfeso/yunjia-poster/git/trees/c1536f35151a7feef9cc3f48fbb22ddf69ac51ba"
+      },
+      "url": "https://api.github.com/repos/rdfeso/yunjia-poster/git/commits/3bcb9f451df7252cbb9371ae2f261c7033968ca7",
+      "comment_count": 0,
+      "verification": {
+        "verified": false,
+        "reason": "unsigned",
+        "signature": null,
+        "payload": null,
+        "verified_at": null
+      }
+    },
+    "url": "https://api.github.com/repos/rdfeso/yunjia-poster/commits/3bcb9f451df7252cbb9371ae2f261c7033968ca7",
+    "html_url": "https://github.com/rdfeso/yunjia-poster/commit/3bcb9f451df7252cbb9371ae2f261c7033968ca7",
+    "comments_url": "https://api.github.com/repos/rdfeso/yunjia-poster/commits/3bcb9f451df7252cbb9371ae2f261c7033968ca7/comments",
+    "author": {
+      "login": "github-actions[bot]",
+      "id": 41898282,
+      "node_id": "MDM6Qm90NDE4OTgyODI=",
+      "avatar_url": "https://avatars.githubusercontent.com/in/15368?v=4",
+      "gravatar_id": "",
+      "url": "https://api.github.com/users/github-actions%5Bbot%5D",
+      "html_url": "https://github.com/apps/github-actions",
+      "followers_url": "https://api.github.com/users/github-actions%5Bbot%5D/followers",
+      "following_url": "https://api.github.com/users/github-actions%5Bbot%5D/following{/other_user}",
+      "gists_url": "https://api.github.com/users/github-actions%5Bbot%5D/gists{/gist_id}",
+      "starred_url": "https://api.github.com/users/github-actions%5Bbot%5D/starred{/owner}{/repo}",
+      "subscriptions_url": "https://api.github.com/users/github-actions%5Bbot%5D/subscriptions",
+      "organizations_url": "https://api.github.com/users/github-actions%5Bbot%5D/orgs",
+      "repos_url": "https://api.github.com/users/github-actions%5Bbot%5D/repos",
+      "events_url": "https://api.github.com/users/github-actions%5Bbot%5D/events{/privacy}",
+      "received_events_url": "https://api.github.com/users/github-actions%5Bbot%5D/received_events",
+      "type": "Bot",
+      "user_view_type": "public",
+      "site_admin": false
+    },
+    "committer": {
+      "login": "github-actions[bot]",
+      "id": 41898282,
+      "node_id": "MDM6Qm90NDE4OTgyODI=",
+      "avatar_url": "https://avatars.githubusercontent.com/in/15368?v=4",
+      "gravatar_id": "",
+      "url": "https://api.github.com/users/github-actions%5Bbot%5D",
+      "html_url": "https://github.com/apps/github-actions",
+      "followers_url": "https://api.github.com/users/github-actions%5Bbot%5D/followers",
+      "following_url": "https://api.github.com/users/github-actions%5Bbot%5D/following{/other_user}",
+      "gists_url": "https://api.github.com/users/github-actions%5Bbot%5D/gists{/gist_id}",
+      "starred_url": "https://api.github.com/users/github-actions%5Bbot%5D/starred{/owner}{/repo}",
+      "subscriptions_url": "https://api.github.com/users/github-actions%5Bbot%5D/subscriptions",
+      "organizations_url": "https://api.github.com/users/github-actions%5Bbot%5D/orgs",
+      "repos_url": "https://api.github.com/users/github-actions%5Bbot%5D/repos",
+      "events_url": "https://api.github.com/users/github-actions%5Bbot%5D/events{/privacy}",
+      "received_events_url": "https://api.github.com/users/github-actions%5Bbot%5D/received_events",
+      "type": "Bot",
+      "user_view_type": "public",
+      "site_admin": false
+    },
+    "parents": [
+      {
+        "sha": "c055b73e377d48432ba2803903e2717bb64a2658",
+        "url": "https://api.github.com/repos/rdfeso/yunjia-poster/commits/c055b73e377d48432ba2803903e2717bb64a2658",
+        "html_url": "https://github.com/rdfeso/yunjia-poster/commit/c055b73e377d48432ba2803903e2717bb64a2658"
+      }
+    ]
+  },
+  {
+    "sha": "c055b73e377d48432ba2803903e2717bb64a2658",
+    "node_id": "C_kwDOSwzi7NoAKGMwNTViNzNlMzc3ZDQ4NDMyYmEyODAzOTAzZTI3MTdiYjY0YTI2NTg",
+    "commit": {
+      "author": {
+        "name": "github-actions[bot]",
+        "email": "github-actions[bot]@users.noreply.github.com",
+        "date": "2026-06-30T19:02:27Z"
+      },
+      "committer": {
+        "name": "github-actions[bot]",
+        "email": "github-actions[bot]@users.noreply.github.com",
+        "date": "2026-06-30T19:02:27Z"
+      },
+      "message": "chore: update dedup data [skip ci]",
+      "tree": {
+        "sha": "932a9c1a0e73e12d007606a598e2bbeb22e0e532",
+        "url": "https://api.github.com/repos/rdfeso/yunjia-poster/git/trees/932a9c1a0e73e12d007606a598e2bbeb22e0e532"
+      },
+      "url": "https://api.github.com/repos/rdfeso/yunjia-poster/git/commits/c055b73e377d48432ba2803903e2717bb64a2658",
+      "comment_count": 0,
+      "verification": {
+        "verified": false,
+        "reason": "unsigned",
+        "signature": null,
+        "payload": null,
+        "verified_at": null
+      }
+    },
+    "url": "https://api.github.com/repos/rdfeso/yunjia-poster/commits/c055b73e377d48432ba2803903e2717bb64a2658",
+    "html_url": "https://github.com/rdfeso/yunjia-poster/commit/c055b73e377d48432ba2803903e2717bb64a2658",
+    "comments_url": "https://api.github.com/repos/rdfeso/yunjia-poster/commits/c055b73e377d48432ba2803903e2717bb64a2658/comments",
+    "author": {
+      "login": "github-actions[bot]",
+      "id": 41898282,
+      "node_id": "MDM6Qm90NDE4OTgyODI=",
+      "avatar_url": "https://avatars.githubusercontent.com/in/15368?v=4",
+      "gravatar_id": "",
+      "url": "https://api.github.com/users/github-actions%5Bbot%5D",
+      "html_url": "https://github.com/apps/github-actions",
+      "followers_url": "https://api.github.com/users/github-actions%5Bbot%5D/followers",
+      "following_url": "https://api.github.com/users/github-actions%5Bbot%5D/following{/other_user}",
+      "gists_url": "https://api.github.com/users/github-actions%5Bbot%5D/gists{/gist_id}",
+      "starred_url": "https://api.github.com/users/github-actions%5Bbot%5D/starred{/owner}{/repo}",
+      "subscriptions_url": "https://api.github.com/users/github-actions%5Bbot%5D/subscriptions",
+      "organizations_url": "https://api.github.com/users/github-actions%5Bbot%5D/orgs",
+      "repos_url": "https://api.github.com/users/github-actions%5Bbot%5D/repos",
+      "events_url": "https://api.github.com/users/github-actions%5Bbot%5D/events{/privacy}",
+      "received_events_url": "https://api.github.com/users/github-actions%5Bbot%5D/received_events",
+      "type": "Bot",
+      "user_view_type": "public",
+      "site_admin": false
+    },
+    "committer": {
+      "login": "github-actions[bot]",
+      "id": 41898282,
+      "node_id": "MDM6Qm90NDE4OTgyODI=",
+      "avatar_url": "https://avatars.githubusercontent.com/in/15368?v=4",
+      "gravatar_id": "",
+      "url": "https://api.github.com/users/github-actions%5Bbot%5D",
+      "html_url": "https://github.com/apps/github-actions",
+      "followers_url": "https://api.github.com/users/github-actions%5Bbot%5D/followers",
+      "following_url": "https://api.github.com/users/github-actions%5Bbot%5D/following{/other_user}",
+      "gists_url": "https://api.github.com/users/github-actions%5Bbot%5D/gists{/gist_id}",
+      "starred_url": "https://api.github.com/users/github-actions%5Bbot%5D/starred{/owner}{/repo}",
+      "subscriptions_url": "https://api.github.com/users/github-actions%5Bbot%5D/subscriptions",
+      "organizations_url": "https://api.github.com/users/github-actions%5Bbot%5D/orgs",
+      "repos_url": "https://api.github.com/users/github-actions%5Bbot%5D/repos",
+      "events_url": "https://api.github.com/users/github-actions%5Bbot%5D/events{/privacy}",
+      "received_events_url": "https://api.github.com/users/github-actions%5Bbot%5D/received_events",
+      "type": "Bot",
+      "user_view_type": "public",
+      "site_admin": false
+    },
+    "parents": [
+      {
+        "sha": "f79f85e194809c1955182057cbd98cecc913d69a",
+        "url": "https://api.github.com/repos/rdfeso/yunjia-poster/commits/f79f85e194809c1955182057cbd98cecc913d69a",
+        "html_url": "https://github.com/rdfeso/yunjia-poster/commit/f79f85e194809c1955182057cbd98cecc913d69a"
+      }
+    ]
+  },
+  {
+    "sha": "f79f85e194809c1955182057cbd98cecc913d69a",
+    "node_id": "C_kwDOSwzi7NoAKGY3OWY4NWUxOTQ4MDljMTk1NTE4MjA1N2NiZDk4Y2VjYzkxM2Q2OWE",
+    "commit": {
+      "author": {
+        "name": "rdfeso",
+        "email": "rdfeso@126.com",
+        "date": "2026-06-30T00:41:43Z"
+      },
+      "committer": {
+        "name": "rdfeso",
+        "email": "rdfeso@126.com",
+        "date": "2026-06-30T00:41:43Z"
+      },
+      "message": "fix: fallback cross-day dedup - data/ dir for persistent dedup files",
+      "tree": {
+        "sha": "2236d951f56853fb841fdfbabc0bb157da394059",
+        "url": "https://api.github.com/repos/rdfeso/yunjia-poster/git/trees/2236d951f56853fb841fdfbabc0bb157da394059"
+      },
+      "url": "https://api.github.com/repos/rdfeso/yunjia-poster/git/commits/f79f85e194809c1955182057cbd98cecc913d69a",
+      "comment_count": 0,
+      "verification": {
+        "verified": false,
+        "reason": "unsigned",
+        "signature": null,
+        "payload": null,
+        "verified_at": null
+      }
+    },
+    "url": "https://api.github.com/repos/rdfeso/yunjia-poster/commits/f79f85e194809c1955182057cbd98cecc913d69a",
+    "html_url": "https://github.com/rdfeso/yunjia-poster/commit/f79f85e194809c1955182057cbd98cecc913d69a",
+    "comments_url": "https://api.github.com/repos/rdfeso/yunjia-poster/commits/f79f85e194809c1955182057cbd98cecc913d69a/comments",
+    "author": {
+      "login": "rdfeso",
+      "id": 290641729,
+      "node_id": "U_kgDOEVLXQQ",
+      "avatar_url": "https://avatars.githubusercontent.com/u/290641729?v=4",
+      "gravatar_id": "",
+      "url": "https://api.github.com/users/rdfeso",
+      "html_url": "https://github.com/rdfeso",
+      "followers_url": "https://api.github.com/users/rdfeso/followers",
+      "following_url": "https://api.github.com/users/rdfeso/following{/other_user}",
+      "gists_url": "https://api.github.com/users/rdfeso/gists{/gist_id}",
+      "starred_url": "https://api.github.com/users/rdfeso/starred{/owner}{/repo}",
+      "subscriptions_url": "https://api.github.com/users/rdfeso/subscriptions",
+      "organizations_url": "https://api.github.com/users/rdfeso/orgs",
+      "repos_url": "https://api.github.com/users/rdfeso/repos",
+      "events_url": "https://api.github.com/users/rdfeso/events{/privacy}",
+      "received_events_url": "https://api.github.com/users/rdfeso/received_events",
+      "type": "User",
+      "user_view_type": "public",
+      "site_admin": false
+    },
+    "committer": {
+      "login": "rdfeso",
+      "id": 290641729,
+      "node_id": "U_kgDOEVLXQQ",
+      "avatar_url": "https://avatars.githubusercontent.com/u/290641729?v=4",
+      "gravatar_id": "",
+      "url": "https://api.github.com/users/rdfeso",
+      "html_url": "https://github.com/rdfeso",
+      "followers_url": "https://api.github.com/users/rdfeso/followers",
+      "following_url": "https://api.github.com/users/rdfeso/following{/other_user}",
+      "gists_url": "https://api.github.com/users/rdfeso/gists{/gist_id}",
+      "starred_url": "https://api.github.com/users/rdfeso/starred{/owner}{/repo}",
+      "subscriptions_url": "https://api.github.com/users/rdfeso/subscriptions",
+      "organizations_url": "https://api.github.com/users/rdfeso/orgs",
+      "repos_url": "https://api.github.com/users/rdfeso/repos",
+      "events_url": "https://api.github.com/users/rdfeso/events{/privacy}",
+      "received_events_url": "https://api.github.com/users/rdfeso/received_events",
+      "type": "User",
+      "user_view_type": "public",
+      "site_admin": false
+    },
+    "parents": [
+      {
+        "sha": "62076a62c71846674a0e8496007a60b9edff5551",
+        "url": "https://api.github.com/repos/rdfeso/yunjia-poster/commits/62076a62c71846674a0e8496007a60b9edff5551",
+        "html_url": "https://github.com/rdfeso/yunjia-poster/commit/62076a62c71846674a0e8496007a60b9edff5551"
+      }
+    ]
+  }
+]

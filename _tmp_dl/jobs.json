@@ -1,0 +1,121 @@
+{
+  "total_count": 1,
+  "jobs": [
+    {
+      "id": 84900225070,
+      "run_id": 28628517323,
+      "workflow_name": "Daily Poster",
+      "head_branch": "main",
+      "run_url": "https://api.github.com/repos/rdfeso/yunjia-poster/actions/runs/28628517323",
+      "run_attempt": 1,
+      "node_id": "CR_kwDOSwzi7M8AAAATxHKgLg",
+      "head_sha": "e7866bc9ee3f8503d2e855d8ce51f1f0a909b80a",
+      "url": "https://api.github.com/repos/rdfeso/yunjia-poster/actions/jobs/84900225070",
+      "html_url": "https://github.com/rdfeso/yunjia-poster/actions/runs/28628517323/job/84900225070",
+      "status": "completed",
+      "conclusion": "success",
+      "created_at": "2026-07-02T23:40:23Z",
+      "started_at": "2026-07-02T23:40:26Z",
+      "completed_at": "2026-07-02T23:40:29Z",
+      "name": "build-and-push",
+      "steps": [
+        {
+          "name": "Set up job",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 1,
+          "started_at": "2026-07-02T23:40:27Z",
+          "completed_at": "2026-07-02T23:40:27Z"
+        },
+        {
+          "name": "Check if should skip (dedup - any event)",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 2,
+          "started_at": "2026-07-02T23:40:27Z",
+          "completed_at": "2026-07-02T23:40:28Z"
+        },
+        {
+          "name": "Checkout",
+          "status": "completed",
+          "conclusion": "skipped",
+          "number": 3,
+          "started_at": "2026-07-02T23:40:28Z",
+          "completed_at": "2026-07-02T23:40:28Z"
+        },
+        {
+          "name": "Setup Python",
+          "status": "completed",
+          "conclusion": "skipped",
+          "number": 4,
+          "started_at": "2026-07-02T23:40:28Z",
+          "completed_at": "2026-07-02T23:40:28Z"
+        },
+        {
+          "name": "Install deps + Playwright + fonts",
+          "status": "completed",
+          "conclusion": "skipped",
+          "number": 5,
+          "started_at": "2026-07-02T23:40:28Z",
+          "completed_at": "2026-07-02T23:40:28Z"
+        },
+        {
+          "name": "Prepare config",
+          "status": "completed",
+          "conclusion": "skipped",
+          "number": 6,
+          "started_at": "2026-07-02T23:40:28Z",
+          "completed_at": "2026-07-02T23:40:28Z"
+        },
+        {
+          "name": "Step 1 - Fetch RSS",
+          "status": "completed",
+          "conclusion": "skipped",
+          "number": 7,
+          "started_at": "2026-07-02T23:40:28Z",
+          "completed_at": "2026-07-02T23:40:28Z"
+        },
+        {
+          "name": "Step 2 - AI summary + Generate + Push Feishu",
+          "status": "completed",
+          "conclusion": "skipped",
+          "number": 8,
+          "started_at": "2026-07-02T23:40:28Z",
+          "completed_at": "2026-07-02T23:40:28Z"
+        },
+        {
+          "name": "Commit dedup data",
+          "status": "completed",
+          "conclusion": "skipped",
+          "number": 9,
+          "started_at": "2026-07-02T23:40:28Z",
+          "completed_at": "2026-07-02T23:40:28Z"
+        },
+        {
+          "name": "Upload poster artifact",
+          "status": "completed",
+          "conclusion": "skipped",
+          "number": 10,
+          "started_at": "2026-07-02T23:40:28Z",
+          "completed_at": "2026-07-02T23:40:28Z"
+        },
+        {
+          "name": "Complete job",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 11,
+          "started_at": "2026-07-02T23:40:28Z",
+          "completed_at": "2026-07-02T23:40:28Z"
+        }
+      ],
+      "check_run_url": "https://api.github.com/repos/rdfeso/yunjia-poster/check-runs/84900225070",
+      "labels": [
+        "ubuntu-latest"
+      ],
+      "runner_id": 1000000191,
+      "runner_name": "GitHub Actions 1000000191",
+      "runner_group_id": 0,
+      "runner_group_name": "GitHub Actions"
+    }
+  ]
+}
