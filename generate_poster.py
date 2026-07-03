@@ -381,6 +381,34 @@ def _score_article(title: str, summary: str, source: str = "", article: dict | N
     fluff_count = sum(1 for w in _FLUFF_WORDS if w in summary)
     if fluff_count >= 2 and len(summary) < 100:
         score -= fluff_count * 2
+    # ====== 2026-07-03 新增 3 个护栏 ======
+    # 1) 套壳 fallback 检测：标题本身是空话/主题词而非真实事件
+    #    例：「消费者权益典型案例发布 霸王条款被集中曝光」——这是 AI 把主题词当成标题的伪稿
+    _SHELL_TITLE_PATTERNS = [
+        re.compile(r"^[\u4e00-\u9fff]{2,8}(典型案例|集中曝光|发布|通报|持续|引关注|频发|增多|成常态|渐成|观察|解读|分析|趋势)$"),
+        re.compile(r"^(聚焦|关注|透视|解读)\S{4,12}$"),
+    ]
+    for pat in _SHELL_TITLE_PATTERNS:
+        if pat.match(title):
+            score -= 25
+            break
+    # 2) 同事件跨源检测：抓取到的 raw_content 里如果含"另据""此前""同一天"等转载标志词 + 与已选稿摘要里含相同地名/数字特征
+    #    简化版：raw_content 或 _feed_text 含 "另据" "转载" "据中新社" 视为转载
+    if article:
+        feed = article.get("_feed_text", "") or article.get("raw_content", "")
+        if re.search(r"^.{0,20}(另据|据中新社|新华社.*?电|本网综合|综合.*?报道)", feed[:80]):
+            # 转载稿只给一次性入选机会（同事件其他转载稿会被 _same_topic 拦下）
+            score -= 3
+    # 3) 政府自纠/正面公关稿检测：「审核未通过」「主动整改」「及时回应」等词表
+    #    ——这类稿子对律所无传播价值，应被替换为真正的批评性报道
+    _GOV_PR_PATTERNS = [
+        "已追责整改", "审核未通过", "已严肃处理", "已妥善处理", "主动回应",
+        "及时回应", "积极回应", "回应关切", "高度重视", "已成立.*?专班",
+    ]
+    gov_pr_hits = sum(1 for p in _GOV_PR_PATTERNS if p in title or p in summary)
+    if gov_pr_hits >= 1 and len(summary) < 80:
+        # 短摘要 + 公关词 → 大幅降权（这类稿子说了等于没说）
+        score -= 15
     # 具体度加分：有数字/地名/人名的更有新闻价值
     # 扩展数字匹配：年份、金额、百分比、数量、日期等
     _has_digit = re.search(
@@ -463,6 +491,33 @@ def _reclassify_domestic_articles(articles: list[dict]) -> None:
         if any(p in text for p in _patterns):
             a["scope"] = "domestic"
             a["category"] = "综合资讯"
+
+
+# 事件级指纹：从标题+正文里提取【地名前缀 + 2个核心名词】，用于跨源转载去重
+# 例：「青海乐都发布通报：司机载乘14名村民在机耕道路上发生翻坠事故」
+#     vs 「青海海东皮卡搭载十多名女工坠翻 8人身亡 家属发声」
+#     → 都能抽出 "青海" + {"坠", "翻"} → 同事件
+def _event_fingerprint(title: str, body: str = "") -> str:
+    text = (title + " " + body)[:300]
+    if not text:
+        return ""
+    # 提取所有连续2字中文
+    import re as _re
+    bigrams = _re.findall(r"[\u4e00-\u9fff]{2}", text)
+    if not bigrams:
+        return ""
+    # 第一个非高频 bigram 视为"地名前缀"
+    location_hint = ""
+    for bg in bigrams[:3]:
+        if bg not in _COMMON_BIGRAMS and bg not in {"事故", "通报", "回应", "声明", "官方", "披露", "报道"}:
+            location_hint = bg
+            break
+    if not location_hint:
+        return ""
+    # 关键动词/名词（去除停用词后取前2个）
+    _stop = _COMMON_BIGRAMS | {"新闻", "报道", "事件", "问题", "情况", "工作", "有关", "进行", "目前", "已经", "我们", "表示"}
+    key_terms = [bg for bg in bigrams if bg not in _stop][:3]
+    return f"{location_hint}|{'|'.join(key_terms[:2])}"
 
 
 def _load_previous_articles(output_dir: Path, poster_date: dt.date, days: int = 7) -> list[dict]:
@@ -658,12 +713,18 @@ def select_articles(
     selected: list[dict] = []
     _source_counts: dict[str, int] = {}
     _MAX_PER_SOURCE = 3  # 每个来源最多选3条
+    # 事件级指纹集合：已选文章的"事件关键词"（地名前缀+核心名词），同事件跨源转载只选分数最高的那条
+    _event_keys: set[str] = set()
     for c in candidates:
         # 来源多样性：同一来源最多选 _MAX_PER_SOURCE 条
         _src = c.get("source", "unknown")
         if _source_counts.get(_src, 0) >= _MAX_PER_SOURCE:
             continue
         title = c.get("title", "")
+        # 计算本条的事件指纹（粗略：地名前缀 + 头4个非高频字）
+        ev_key = _event_fingerprint(title, c.get("_feed_text", "") or c.get("raw_content", ""))
+        if ev_key and ev_key in _event_keys:
+            continue
         too_similar = False
         for used in used_titles:
             if _titles_too_similar(title, used) or _same_topic(title, used):
@@ -674,6 +735,8 @@ def select_articles(
         selected.append(c)
         used_titles.append(title)
         _source_counts[_src] = _source_counts.get(_src, 0) + 1
+        if ev_key:
+            _event_keys.add(ev_key)
         if len(selected) >= target:
             break
     return selected[:target]
