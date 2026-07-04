@@ -1465,6 +1465,7 @@ def select_articles(
     # 最低分数线：≥0 才入选，不再放宽到 -3
     # （得分<0 的文章通常是软文/空话/无硬新闻/标题党，不应入选）
     _MIN_SCORE = 0
+    before_filter = len(candidates)
     _filtered = [c for c in candidates if c["_score"] >= _MIN_SCORE]
     if len(_filtered) < target:
         print(f"  [选稿] 高分(≥{_MIN_SCORE})文章不足({len(_filtered)}条)，用 fallback 补齐")
@@ -1473,7 +1474,6 @@ def select_articles(
     filtered_count = before_filter - len(candidates)
 
     if filtered_count:
-
         print(f"  [选稿] 淘汰低分文章 {filtered_count} 条 (得分<{_MIN_SCORE})")
 
 
