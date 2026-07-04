@@ -8,15 +8,6 @@ on:
   workflow_dispatch:
     inputs:
       force:
-        description: '强制运行（跳过去重检查）'
-        required: false
-        default: 'false'
-        type: choice
-        options:
-          - 'true'
-          - 'false'
-    inputs:
-      force:
         description: "Force run (skip dedup check)"
         required: false
         default: "false"
@@ -42,11 +33,16 @@ jobs:
           CURRENT_RUN_ID: ${{ github.run_id }}
         run: |
           # force 模式直接跳过去重
-          FORCE_INPUT="${{ github.event.inputs.force }}"
+          if [ "${{ github.event.inputs.force }}" = "true" ]; then
+            FORCE_INPUT="${{ github.event.inputs.force }}"
           if [ "$FORCE_INPUT" = "true" ]; then
             echo "Force=true, bypassing dedup"
             echo "skip=false" >> "$GITHUB_OUTPUT"
             echo "today=$(TZ=Asia/Shanghai date +%Y-%m-%d)" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          echo "skip=false" >> "$GITHUB_OUTPUT"
+            echo "Force mode: skipping dedup check"
             exit 0
           fi
 
@@ -118,11 +114,7 @@ jobs:
           ")
 
           if [ "$RESULT" = "skip" ]; then
-            if [ "$FORCE_INPUT" = "true" ]; then
-            echo "skip=false" >> "$GITHUB_OUTPUT"
-          else
-            echo "skip=true" >> "$GITHUB_OUTPUT"
-          fi
+            if [ "$FORCE_INPUT" = "true" ]; then echo "skip=false" >> "$GITHUB_OUTPUT"; else echo "skip=true" >> "$GITHUB_OUTPUT"; fi
             echo "今天已有其他运行中或成功的 run，跳过（防止并发重复推送）"
           else
             echo "今天尚无有效运行，继续执行"
