@@ -903,6 +903,10 @@ def _score_article(title: str, summary: str, source: str = "", article: dict | N
 
         score += 2
 
+    # 中新网优先：权威RSS源 +5 分，让中新网文章自然排在网页源前面
+    if source in ("中新网", "人民网", "新华日报"):
+        score += 5
+
     return score
 
 
@@ -1504,7 +1508,9 @@ def select_articles(
 
     _source_counts: dict[str, int] = {}
 
-    _MAX_PER_SOURCE = 3  # 每个来源最多选3条
+    _MAX_PER_SOURCE = 3  # 网页源（网易/新浪/搜狐）每个来源最多选3条
+
+    # 中新网等RSS权威源不受此限制 — 优先选中新网，不够再从网页源补
 
     _MAX_PER_COUNTRY = 1  # 国际新闻每个国家最多选1条（避免同一国家霸版）
 
@@ -1544,11 +1550,11 @@ def select_articles(
 
     for c in candidates:
 
-        # 来源多样性：同一来源最多选 _MAX_PER_SOURCE 条
-
+        # 来源多样性：中新网不限制（优先源），其他来源最多3条
         _src = c.get("source", "unknown")
-
-        if _source_counts.get(_src, 0) >= _MAX_PER_SOURCE:
+        _is_priority_src = _src in ("中新网", "人民网", "新华日报")
+        _max_for_src = target if _is_priority_src else _MAX_PER_SOURCE
+        if _source_counts.get(_src, 0) >= _max_for_src:
 
             continue
 
