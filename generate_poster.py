@@ -1388,49 +1388,9 @@ def _pick_fallback(
 
     # 所有 fallback 都在 hard_min_days 内用过，或者全在 used_titles 中
 
-    # 最后兜底：忽略 hard_min_days，选最久未用的（宁可有重复也不能空）
+    # 不再兜底——宁可少几条也不能跟昨天重复
 
-    for fb in fallback_pool:
-
-        title = fb.get("title", "")
-
-        if title in used_titles:
-
-            continue
-
-        last_used = used_fallbacks.get(title)
-
-        if not last_used:
-
-            used_fallbacks[title] = poster_date.isoformat()
-
-            return fb
-
-        try:
-
-            last_date = dt.date.fromisoformat(last_used)
-
-            days_since = (poster_date - last_date).days
-
-            if days_since > oldest_days:
-
-                oldest_days = days_since
-
-                oldest_fb = fb
-
-        except Exception:
-
-            used_fallbacks[title] = poster_date.isoformat()
-
-            return fb
-
-    if oldest_fb:
-
-        title = oldest_fb.get("title", "")
-
-        used_fallbacks[title] = poster_date.isoformat()
-
-        return oldest_fb
+    print(f"  [fallback] 警告: {scope} 池中所有 fallback 都在 {hard_min_days} 天 cooldown 内，跳过")
 
     return None
 
