@@ -478,9 +478,9 @@ def summarize(raw: str, title: str = "", limit: int = 80) -> str:
 
 _PRIORITY_KEYWORDS = [
 
-    # 法律相关
+    # 法律相关（去掉单字"法"，因为匹配"法国""方法""想法"等不相关词）
 
-    "法", "诉讼", "判决", "律师", "法院", "检察", "违法", "犯罪", "刑事",
+    "法院", "诉讼", "判决", "律师", "检察", "违法", "犯罪", "刑事",
 
     "合同", "侵权", "赔偿", "仲裁", "合规", "监管", "处罚", "执法", "司法",
 
@@ -872,7 +872,7 @@ def _score_article(title: str, summary: str, source: str = "", article: dict | N
         "看过来", "谁还能", "你知道吗", "告诉你", "震惊", "竟然", "居然",
         "难以置信", "不可思", "竟然是", "原来是", "万万没想到", "看完惊",
         "速看", "急转", "扩散", "别再", "别怪", "注意了",
-        "？$",  # 以问号结尾的标题（多数是标题党）
+        "？?$",  # 以问号结尾的标题（全角？或半角?，多数是标题党）
     ]
     for pat in _CLICKBAIT_PATTERNS:
         if re.search(pat, title):
@@ -898,12 +898,13 @@ def _score_article(title: str, summary: str, source: str = "", article: dict | N
         score -= 10
 
     # 空泛政策标题（无具体措施的官样文章）→ -15
+    # 只在标题开头匹配且文章无硬新闻指标时才扣分，避免误杀"法院推进破产审理建设"等真实新闻
     _VAGUE_POLICY_PATTERNS = [
-        "加快能源", "增加.*使用", "推进.*建设", "加强.*管理",
-        "深化.*改革", "优化.*结构", "提升.*水平", "推动.*发展",
+        r"^加快能源", r"^增加.*使用", r"^推进.*建设", r"^加强.*管理",
+        r"^深化.*改革", r"^优化.*结构", r"^提升.*水平", r"^推动.*发展",
     ]
     for pat in _VAGUE_POLICY_PATTERNS:
-        if re.search(pat, title):
+        if re.match(pat, title) and not _has_hard_news:
             score -= 15
             break
 
@@ -1269,7 +1270,7 @@ def _save_used_fallbacks(output_dir: Path, used: dict) -> None:
 
 
 
-def _is_stale_article(article: dict, poster_date: dt.date, max_days: int = 3) -> bool:
+def _is_stale_article(article: dict, poster_date: dt.date, max_days: int = 5) -> bool:
     """检查文章是否过期：标题或摘要中提到的日期距海报日期超过 max_days 天则为过期。"""
     import re as _re_stale
     text = article.get("title", "") + article.get("summary", "")
@@ -1358,10 +1359,10 @@ def _pick_fallback(
         if not last_used:
 
             # 从未用过，最高优先
-
             used_fallbacks[title] = poster_date.isoformat()
-
-            return fb
+            fb_copy = dict(fb)
+            fb_copy["_is_fallback"] = True
+            return fb_copy
 
         try:
 
@@ -1372,8 +1373,9 @@ def _pick_fallback(
             if days_since >= cooldown_days:
 
                 used_fallbacks[title] = poster_date.isoformat()
-
-                return fb
+                fb_copy = dict(fb)
+                fb_copy["_is_fallback"] = True
+                return fb_copy
 
             # 硬性禁止：hard_min_days 天内用过的，不作为后备
 
@@ -1392,10 +1394,10 @@ def _pick_fallback(
         except Exception:
 
             # 日期解析失败，当作未用过
-
             used_fallbacks[title] = poster_date.isoformat()
-
-            return fb
+            fb_copy = dict(fb)
+            fb_copy["_is_fallback"] = True
+            return fb_copy
 
     # 第二轮：全部在冷却期内，选最久未用的（有总比没有好）
 
@@ -1406,8 +1408,9 @@ def _pick_fallback(
         title = oldest_fb.get("title", "")
 
         used_fallbacks[title] = poster_date.isoformat()
-
-        return oldest_fb
+        fb_copy = dict(oldest_fb)
+        fb_copy["_is_fallback"] = True
+        return fb_copy
 
     # 所有 fallback 都在 hard_min_days 内用过，或者全在 used_titles 中
 
@@ -1463,6 +1466,12 @@ def select_articles(
     if filtered_count:
         print(f"  [选稿] 淘汰低分文章 {filtered_count} 条 (得分<{_MIN_SCORE})")
 
+    # 打印 Top 5 评分明细，方便调试
+    if candidates:
+        for c in candidates[:5]:
+            print(f"    [Top] {c.get('title','')[:35]} | {c['_score']}分 | {c.get('source','')[:8]}")
+        if len(candidates) > 5:
+            print(f"    ... 还有 {len(candidates)-5} 条候选")
 
 
     if not candidates:
@@ -1522,6 +1531,60 @@ def select_articles(
         "以色列": ["以色列", "特拉维夫"],
 
         "欧盟": ["欧盟", "布鲁塞尔"],
+
+        "委内瑞拉": ["委内瑞拉", "加拉加斯"],
+
+        "巴西": ["巴西", "巴西利亚", "卢拉"],
+
+        "阿根廷": ["阿根廷", "布宜诺斯艾利斯"],
+
+        "墨西哥": ["墨西哥", "墨西哥城"],
+
+        "古巴": ["古巴", "哈瓦那"],
+
+        "意大利": ["意大利", "罗马"],
+
+        "西班牙": ["西班牙", "马德里"],
+
+        "荷兰": ["荷兰", "阿姆斯特丹"],
+
+        "瑞士": ["瑞士", "瑞郎", "日内瓦"],
+
+        "瑞典": ["瑞典", "斯德哥尔摩"],
+
+        "加拿大": ["加拿大", "渥太华", "加元"],
+
+        "澳大利亚": ["澳大利亚", "堪培拉", "澳元"],
+
+        "新西兰": ["新西兰", "惠灵顿"],
+
+        "南非": ["南非", "开普敦"],
+
+        "埃及": ["埃及", "开罗"],
+
+        "巴基斯坦": ["巴基斯坦", "伊斯兰堡"],
+
+        "沙特": ["沙特", "利雅得"],
+
+        "土耳其": ["土耳其", "安卡拉", "埃尔多安"],
+
+        "朝鲜": ["朝鲜", "平壤", "金正恩"],
+
+        "乌克兰": ["乌克兰", "基辅", "泽连斯基"],
+
+        "新加坡": ["新加坡"],
+
+        "越南": ["越南", "河内"],
+
+        "缅甸": ["缅甸", "内比都"],
+
+        "菲律宾": ["菲律宾", "马尼拉"],
+
+        "阿富汗": ["阿富汗", "喀布尔"],
+
+        "叙利亚": ["叙利亚", "大马士革"],
+
+        "阿联酋": ["阿联酋", "迪拜"],
 
     }
 
@@ -2043,11 +2106,8 @@ def fetch_feed(source: dict, timeout: int = 10) -> list[dict]:
 
     today = now_dt.date()
 
-    yesterday_date = today - dt.timedelta(days=1)
-
-    recent_dates = {today.isoformat(), yesterday_date.isoformat()}
-
-    recent_dates_cn = {today.strftime("%Y年%m月%d日"), yesterday_date.strftime("%Y年%m月%d日")}
+    # 接受今天 + 过去3天的文章（周末RSS可能不更新，周一需要抓周五的文章）
+    recent_date_set = {today - dt.timedelta(days=i) for i in range(4)}
 
 
 
@@ -2062,23 +2122,17 @@ def fetch_feed(source: dict, timeout: int = 10) -> list[dict]:
                                "{http://www.w3.org/2005/Atom}updated"))
 
         if pub_date:
-
             try:
-
                 from email.utils import parsedate_to_datetime
-
                 pub_dt = parsedate_to_datetime(pub_date)
-
                 pub_date_date = pub_dt.date()
-
-                if pub_date_date != today and pub_date_date != yesterday_date:
-
+                if pub_date_date not in recent_date_set:
                     continue
-
             except Exception:
-
-                if not any(d in pub_date for d in [*recent_dates, *recent_dates_cn]):
-
+                # 日期解析失败时，检查文本中是否包含近期日期
+                recent_strs = {d.isoformat() for d in recent_date_set}
+                recent_strs.update({d.strftime("%Y年%m月%d日") for d in recent_date_set})
+                if not any(s in pub_date for s in recent_strs):
                     continue
 
 
@@ -3833,7 +3887,10 @@ def main() -> None:
 
         articles = final_clean
 
+        real_count = sum(1 for a in articles if not a.get('_is_fallback', False))
+        fb_count = sum(1 for a in articles if a.get('_is_fallback', False))
         print(f"[选稿] 去重后国内={len([a for a in articles if a.get('scope')=='domestic'])} 条，国际={len([a for a in articles if a.get('scope')=='international'])} 条")
+        print(f"[选稿] 真实新闻={real_count} 条，fallback={fb_count} 条")
 
     else:
 
@@ -4003,7 +4060,10 @@ def main() -> None:
 
             articles = final_clean
 
+            real_count = sum(1 for a in articles if not a.get('_is_fallback', False))
+            fb_count = sum(1 for a in articles if a.get('_is_fallback', False))
             print(f"[选稿] 质量兜底后国内={len([a for a in articles if a.get('scope')=='domestic'])} 条，国际={len([a for a in articles if a.get('scope')=='international'])} 条")
+            print(f"[选稿] 真实新闻={real_count} 条，fallback={fb_count} 条")
 
 
 
