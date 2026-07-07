@@ -822,7 +822,7 @@ def _score_article(title: str, summary: str, source: str = "", article: dict | N
 
     # ====== 硬新闻指标（白名单）======
     # 要求每条新闻包含至少1个"硬新闻动作/事件词"
-    # 没有硬新闻指标 → -8 分（不是 -15 一刀杀，给有数字/法律加分的文章留机会）
+    # 没有硬新闻指标 → -5 分（轻降权，不是 -8/-15 一刀杀）
     _HARD_NEWS_INDICATORS = [
         # 司法/执法动作
         "判决", "裁定", "逮捕", "起诉", "查处", "通报", "罚款", "拘留",
@@ -865,7 +865,7 @@ def _score_article(title: str, summary: str, source: str = "", article: dict | N
     ]
     _has_hard_news = any(ind in text for ind in _HARD_NEWS_INDICATORS)
     if not _has_hard_news:
-        score -= 8  # 没有硬新闻指标 → 降权但不一刀杀
+        score -= 5  # 轻降权，不是一刀杀
 
     # 标题党/点击诱饵 → 硬性 -20（不是 -5/-8 的软降权）
     _CLICKBAIT_PATTERNS = [
@@ -1452,9 +1452,10 @@ def select_articles(
 
 
 
-    # 最低分数线：≥0 才入选，不再放宽到 -3
-    # （得分<0 的文章通常是软文/空话/无硬新闻/标题党，不应入选）
-    _MIN_SCORE = 0
+    # 最低分数线：≥-10 才入选
+    # （-5无硬新闻 + -8软新闻 + 加分项 ≈ -10，给正常新闻留余地）
+    # 真正的垃圾（标题党-20/分析文-20/富化失败-30）仍会被淘汰
+    _MIN_SCORE = -10
     before_filter = len(candidates)
     _filtered = [c for c in candidates if c["_score"] >= _MIN_SCORE]
     if len(_filtered) < target:
@@ -2861,17 +2862,19 @@ def _has_valid_summary(summary: str, title: str = "") -> bool:
     )) and not has_digit and not has_legal_action and not has_place and not has_org_or_brand
 
     # === 核心修改：白名单逻辑 ===
-    # 必须命中至少 2 个具体信息点
-    # 且其中至少 1 个必须是"硬新闻动作"或"具量纲数字"（防纯地名+日期的空稿）
+    # 必须命中至少 1 个具体信息点（从 2 个放宽到 1 个）
+    # hard_news 和 digit_with_unit 仍然是最强信号，但不再强制要求
     concrete_signals = sum([
         has_digit_with_unit, has_place, has_legal_action, has_org_or_brand, has_digit,
     ])
-    if concrete_signals < 2:
+    if concrete_signals < 1:
         return False
 
-    # 如果5个信号里没有硬新闻动作也没有具量纲数字 → 内容太软
-    if not has_hard_news and not has_digit_with_unit:
-        return False
+    # 如果没有任何具体信号且全文都是主题词 → 假稿
+    if not has_hard_news and not has_digit_with_unit and concrete_signals < 2:
+        # 允许通过，但标记为低置信度（只要不是纯套话就行）
+        if is_thematic_only:
+            return False
 
 
 
