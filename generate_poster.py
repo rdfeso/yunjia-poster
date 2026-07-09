@@ -526,7 +526,11 @@ def _score_article(title: str, summary: str, source: str = "", article: dict | N
 
     text = title + summary
 
-    score = 0
+    # 基准分 +15：给每篇文章一个缓冲池，吸收惩罚叠加
+    # 惩罚最多叠加到 -30~-40（软新闻-8 + 无硬新闻-5 + 评论-5 + 空泛政策-15 + 套话-4）
+    # 基准 +15 让正常新闻（即使被多个惩罚命中）仍能保持正分
+    # 只有真正的垃圾/标题党/分析文才会被推到负分以下
+    score = 15
 
 
 
@@ -1314,7 +1318,7 @@ def _pick_fallback(
 
     cooldown_days: int = 14,
 
-    hard_min_days: int = 3,
+    hard_min_days: int = 1,
 
 ) -> dict | None:
 
@@ -1452,10 +1456,11 @@ def select_articles(
 
 
 
-    # 最低分数线：≥-10 才入选
-    # （-5无硬新闻 + -8软新闻 + 加分项 ≈ -10，给正常新闻留余地）
-    # 真正的垃圾（标题党-20/分析文-20/富化失败-30）仍会被淘汰
-    _MIN_SCORE = -10
+    # 最低分数线：≥0 才入选（基准分+15已吸收惩罚叠加）
+    # 正常新闻即使被多个惩罚命中（-5无硬新闻 + -8软新闻 + -5评论 = -18），
+    # 加上基准+15和加分项，通常仍能保持正分
+    # 只有真正的垃圾（标题党-20/分析文-20/富化失败-30）才会被推到负分以下
+    _MIN_SCORE = 0
     before_filter = len(candidates)
     _filtered = [c for c in candidates if c["_score"] >= _MIN_SCORE]
     if len(_filtered) < target:
@@ -2898,11 +2903,11 @@ def _has_valid_summary(summary: str, title: str = "") -> bool:
 
     fluff_count = sum(1 for w in _FLUFF if w in s)
 
-    if fluff_count >= 2 and concrete_signals < 2:
+    if fluff_count >= 3 and concrete_signals < 1:
 
         return False
 
-    if fluff_count >= 4:
+    if fluff_count >= 5:
 
         return False
 
